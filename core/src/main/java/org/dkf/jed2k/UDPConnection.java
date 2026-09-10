@@ -3,13 +3,19 @@ package org.dkf.jed2k;
 
 import org.dkf.jed2k.exception.ErrorCode;
 import org.dkf.jed2k.exception.JED2KException;
+import org.dkf.jed2k.hash.MD4;
 import org.dkf.jed2k.protocol.Endpoint;
+import org.dkf.jed2k.protocol.Hash;
 import org.dkf.jed2k.protocol.PacketCombiner;
 import org.dkf.jed2k.protocol.PacketHeader;
 import org.dkf.jed2k.protocol.Serializable;
+import org.dkf.jed2k.protocol.server.FoundFileSources;
+import org.dkf.jed2k.protocol.server.GetFileSources;
+import static org.dkf.jed2k.Utils.isLowId;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.DatagramChannel;
@@ -62,16 +68,43 @@ public class UDPConnection {
         try {
             channel.receive(bufferIncoming);
         } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            log.warn("[udp] receive error: {}", e.getMessage());
+            return;
         }
 
         bufferIncoming.flip();
-        // read packet header and body here
+        if (bufferIncoming.remaining() < 1) return;
+        
         stat.receiveBytes(bufferIncoming.remaining(), 0);
         PacketHeader header = new PacketHeader();
         header.get(bufferIncoming);
-        packetCombainer.unpack(header, bufferIncoming);
+        
+        // manually parse FoundFileSources from UDP response
+        if (bufferIncoming.remaining() >= MD4.HASH_SIZE + 1) {
+            try {
+                Hash fileHash = new Hash();
+                fileHash.get(bufferIncoming);
+                int count = bufferIncoming.get() & 0xFF;
+                
+                Transfer t = session.findTransferDirect(fileHash);
+                if (t != null) {
+                    log.debug("[udp] received {} sources for {}", count, fileHash);
+                    for (int i = 0; i < count && bufferIncoming.remaining() >= 6; i++) {
+                        int ip = bufferIncoming.getInt();
+                        int port = bufferIncoming.getShort() & 0xFFFF;
+                        if (!Utils.isLowId(ip)) {
+                            try {
+                                t.addPeer(new Endpoint(ip, port), PeerInfo.SERVER);
+                            } catch(JED2KException e) {
+                                // skip unreachable
+                            }
+                        }
+                    }
+                }
+            } catch(Exception e) {
+                log.debug("[udp] failed to parse response: {}", e.getMessage());
+            }
+        }
     }
 
     public void onWriteable() {
@@ -99,5 +132,32 @@ public class UDPConnection {
         }
 
         close();
+    }
+
+    /**
+     * Send UDP source request to server
+     */
+    public void sendSourcesRequest(Hash fileHash, long size, InetSocketAddress serverAddr) {
+        if (channel == null || !channel.isOpen()) return;
+        try {
+            long hi = size >>> 32;
+            long lo = size & 0xFFFFFFFF;
+            GetFileSources request = new GetFileSources(fileHash, (int)hi, (int)lo);
+            ByteBuffer buf = ByteBuffer.allocate(1024);
+            if (packetCombainer.pack(request, buf)) {
+                buf.flip();
+                channel.send(buf, serverAddr);
+                stat.sendBytes(buf.remaining(), 0);
+                log.debug("[udp] sent sources request for {} to {}", fileHash, serverAddr);
+            }
+        } catch(IOException e) {
+            log.warn("[udp] failed to send sources request: {}", e.getMessage());
+        } catch(JED2KException e) {
+            log.warn("[udp] failed to pack sources request: {}", e.getMessage());
+        }
+    }
+
+    public Statistics getStatistics() {
+        return stat;
     }
 }

@@ -50,6 +50,7 @@ public class Session extends Thread {
 
     Map<Hash, Transfer> transfers = new HashMap<Hash, Transfer>();
     ArrayList<PeerConnection> connections = new ArrayList<PeerConnection>(); // incoming connections
+    UDPConnection udpConnection = null; // for UDP source requests
     Settings settings = null;
     long lastTick = Time.currentTime();
     HashMap<Integer, Hash> callbacks = new HashMap<Integer, Hash>();
@@ -282,6 +283,16 @@ public class Session extends Thread {
             log.error("[listen] unexpected exception {}", e);
             closeListenSocket();
             pushAlert(new ListenAlert(e.getMessage(), settings.listenPort));
+        }
+
+        // initialize UDP connection for source requests
+        if (udpConnection == null) {
+            try {
+                udpConnection = new UDPConnection(this);
+                log.info("UDP connection initialized for source requests");
+            } catch(Exception e) {
+                log.error("[listen] failed to init UDP connection {}", e);
+            }
         }
     }
 
@@ -772,7 +783,16 @@ public class Session extends Thread {
     }
 
     void sendSourcesRequest(final Hash h, final long size) {
+        // send via TCP (existing)
         if (serverConection != null) serverConection.sendFileSourcesRequest(h, size);
+        // also send via UDP for faster response
+        if (udpConnection != null && serverConection != null) {
+            try {
+                udpConnection.sendSourcesRequest(h, size, serverConection.getAddress());
+            } catch(Exception e) {
+                log.debug("UDP source request failed: {}", e.getMessage());
+            }
+        }
     }
 
     void sendDhtSourcesRequest(final Hash h, final long size, final Transfer t) {

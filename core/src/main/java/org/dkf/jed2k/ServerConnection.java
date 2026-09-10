@@ -387,7 +387,7 @@ public class ServerConnection extends Connection {
         return identifier;
     }
 
-    public final InetSocketAddress getAddress() {
+    public InetSocketAddress getAddress() {
         return address;
     }
 
