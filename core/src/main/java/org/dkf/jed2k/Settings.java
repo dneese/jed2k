@@ -21,7 +21,7 @@ public class Settings {
     public int maxConnectionsPerSecond = 25;
     public int compressionVersion = 0;          // use 1 for activate compression
     public int serverSearchTimeout = 15;        // seconds
-    public boolean reconnectoToServer = false;  // reconnect to server if connection was closed due to error
+    public boolean reconnectoToServer = true;  // reconnect to server if connection was closed due to error
 
     /**
      * send ping message to server every serverPingTimeout seconds
