@@ -261,6 +261,27 @@ public class ServerConnection extends Connection {
         throw new JED2KException(ErrorCode.SERVER_CONN_UNSUPPORTED_PACKET);
     }
 
+    // Source exchange not supported on server connections - only peer-to-peer
+    @Override
+    public void onRequestSources(RequestSources value) throws JED2KException {
+        throw new JED2KException(ErrorCode.SERVER_CONN_UNSUPPORTED_PACKET);
+    }
+
+    @Override
+    public void onAnswerSources(AnswerSources value) throws JED2KException {
+        throw new JED2KException(ErrorCode.SERVER_CONN_UNSUPPORTED_PACKET);
+    }
+
+    @Override
+    public void onRequestSources2(RequestSources2 value) throws JED2KException {
+        throw new JED2KException(ErrorCode.SERVER_CONN_UNSUPPORTED_PACKET);
+    }
+
+    @Override
+    public void onAnswerSources2(AnswerSources2 value) throws JED2KException {
+        throw new JED2KException(ErrorCode.SERVER_CONN_UNSUPPORTED_PACKET);
+    }
+
     @Override
     public void onFoundFileSources(FoundFileSources value)
             throws JED2KException {

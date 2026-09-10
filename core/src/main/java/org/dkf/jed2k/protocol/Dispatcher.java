@@ -38,4 +38,10 @@ public interface Dispatcher {
     public void onClientSendingPart64(SendingPart64 value) throws JED2KException;
     public void onClientCompressedPart32(CompressedPart32 value) throws JED2KException;
     public void onClientCompressedPart64(CompressedPart64 value) throws JED2KException;
+
+    // source exchange
+    public void onRequestSources(RequestSources value) throws JED2KException;
+    public void onAnswerSources(AnswerSources value) throws JED2KException;
+    public void onRequestSources2(RequestSources2 value) throws JED2KException;
+    public void onAnswerSources2(AnswerSources2 value) throws JED2KException;
 }

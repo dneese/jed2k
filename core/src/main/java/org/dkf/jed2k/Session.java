@@ -741,6 +741,13 @@ public class Session extends Thread {
         return new TransferHandle(this, transfers.get(h));
     }
 
+    /**
+     * Find transfer directly by hash - used for source exchange
+     */
+    public final synchronized Transfer findTransferDirect(final Hash h) {
+        return transfers.get(h);
+    }
+
     public void removeTransfer(final Hash h, final boolean deleteFile) {
         commands.add(new Runnable() {
             @Override

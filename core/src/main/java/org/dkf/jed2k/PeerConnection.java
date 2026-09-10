@@ -392,7 +392,7 @@ public class PeerConnection extends Connection {
         mo.unicodeSupport = 1;
         mo.dataCompVer = session.getCompressionVersion();  // support data compression
         mo.noViewSharedFiles = 1; // temp value
-        mo.sourceExchange1Ver = 0; //SOURCE_EXCHG_LEVEL - important value
+        mo.sourceExchange1Ver = 1; //SOURCE_EXCHG_LEVEL - enable source exchange v1
 
         MiscOptions2 mo2 = new MiscOptions2();
         mo2.setCaptcha();
@@ -465,6 +465,13 @@ public class PeerConnection extends Connection {
                 break;
             }
         }
+    }
+
+    /**
+     * Check if remote peer supports source exchange (v1 or v2)
+     */
+    private boolean remoteSupportsSourceExchange() {
+        return remotePeerInfo.misc1.sourceExchange1Ver > 0 || remotePeerInfo.misc2.supportSourceExt2();
     }
 
     @Override
@@ -546,6 +553,12 @@ public class PeerConnection extends Connection {
         assignRemotePeerInformation(value);
         if (transfer != null) {
             write(new FileRequest(transfer.getHash()));
+            // send source exchange request for this file
+            // peer will respond with sources it knows
+            if (remoteSupportsSourceExchange()) {
+                write(new RequestSources(transfer.getHash()));
+                log.debug("{} >> request sources for {} (source exchange)", endpoint, transfer.getHash());
+            }
         }
     }
 
@@ -709,6 +722,70 @@ public class PeerConnection extends Connection {
     public void onQueueRanking(QueueRanking value) throws JED2KException {
         log.debug("{} << queue ranking {} ", endpoint, value.rank);
         close(ErrorCode.QUEUE_RANKING);
+    }
+
+    @Override
+    public void onRequestSources(RequestSources value) throws JED2KException {
+        // peer is asking us for sources for a file
+        log.debug("{} << request sources for {}", endpoint, value.fileHash);
+        Transfer t = session.findTransferDirect(value.fileHash);
+        if (t != null && t.wantMorePeers()) {
+            // send back sources we know about for this file
+            AnswerSources answer = new AnswerSources();
+            answer.fileHash = value.fileHash;
+            // collect sources from the transfer's peer list
+            answer.sources.addAll(t.getPeerEndpoints());
+            write(answer);
+            log.debug("{} >> answer sources {} count {}", endpoint, value.fileHash, answer.sources.size());
+        } else {
+            // still send empty answer
+            AnswerSources answer = new AnswerSources();
+            answer.fileHash = value.fileHash;
+            write(answer);
+        }
+    }
+
+    @Override
+    public void onAnswerSources(AnswerSources value) throws JED2KException {
+        log.debug("{} << answer sources {} count {}", endpoint, value.fileHash, value.sources.size());
+        Transfer t = session.findTransferDirect(value.fileHash);
+        if (t != null) {
+            for (Endpoint ep : value.sources) {
+                try {
+                    t.addPeer(ep, PeerInfo.SERVER);
+                } catch(JED2KException e) {
+                    // skip unreachable
+                }
+            }
+        }
+    }
+
+    @Override
+    public void onRequestSources2(RequestSources2 value) throws JED2KException {
+        log.debug("{} << request sources2 for {}", endpoint, value.fileHash);
+        Transfer t = session.findTransferDirect(value.fileHash);
+        AnswerSources2 answer = new AnswerSources2();
+        answer.fileHash = value.fileHash;
+        if (t != null) {
+            answer.sources.addAll(t.getPeerEndpoints());
+        }
+        write(answer);
+        log.debug("{} >> answer sources2 {} count {}", endpoint, value.fileHash, answer.sources.size());
+    }
+
+    @Override
+    public void onAnswerSources2(AnswerSources2 value) throws JED2KException {
+        log.debug("{} << answer sources2 {} count {}", endpoint, value.fileHash, value.sources.size());
+        Transfer t = session.findTransferDirect(value.fileHash);
+        if (t != null) {
+            for (Endpoint ep : value.sources) {
+                try {
+                    t.addPeer(ep, PeerInfo.SERVER);
+                } catch(JED2KException e) {
+                    // skip
+                }
+            }
+        }
     }
 
     @Override

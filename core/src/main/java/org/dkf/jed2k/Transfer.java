@@ -177,6 +177,21 @@ public class Transfer {
         return hash;
     }
 
+    /**
+     * Get all known peer endpoints for this transfer - used for source exchange
+     */
+    public List<Endpoint> getPeerEndpoints() {
+        List<Endpoint> result = new ArrayList<>();
+        if (policy != null) {
+            for (Peer p : policy) {
+                if (p.getEndpoint() != null) {
+                    result.add(p.getEndpoint());
+                }
+            }
+        }
+        return result;
+    }
+
     public long getCreateTime() {
         return createTime;
     }

@@ -166,6 +166,12 @@ public class PacketCombiner extends org.dkf.jed2k.protocol.PacketCombiner {
         addHandlerClient(ProtocolType.OP_EMULEPROT.value, ExtendedClientTcp.OP_COMPRESSEDPART_I64.value, CompressedPart64.class);
 
         addHandlerClient(ProtocolType.OP_EDONKEYPROT.value, StandardClientTcp.OP_END_OF_DOWNLOAD.value, EndDownload.class);
+
+        // source exchange - client to client
+        addHandlerClient(ProtocolType.OP_EMULEPROT.value, ExtendedClientTcp.OP_REQUESTSOURCES.value, RequestSources.class);
+        addHandlerClient(ProtocolType.OP_EMULEPROT.value, ExtendedClientTcp.OP_ANSWERSOURCES.value, AnswerSources.class);
+        addHandlerClient(ProtocolType.OP_EMULEPROT.value, ExtendedClientTcp.OP_REQUESTSOURCES2.value, RequestSources2.class);
+        addHandlerClient(ProtocolType.OP_EMULEPROT.value, ExtendedClientTcp.OP_ANSWERSOURCES2.value, AnswerSources2.class);
     }
 
     @Override
