@@ -332,6 +332,12 @@ public class Transfer {
             stat.add(c.statistics());
             c.secondTick(tickIntervalMS);
             if (c.isDisconnecting()) itr.remove();
+            // eMuleAI-inspired: remove failed connections after timeout to free slots
+            if (c.isFailed() && c.getFailStartTime() > 0
+                    && Time.currentTime() - c.getFailStartTime() > Time.minutes(5)) {
+                log.debug("[transfer] removing failed connection {} after timeout", c.getEndpoint());
+                itr.remove();
+            }
         }
 
         accumulator.add(stat);

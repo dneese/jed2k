@@ -154,6 +154,7 @@ public class PeerConnection extends Connection {
     private Peer peerInfo;
 
     private boolean failed = false;
+    private long failStartTime = 0;
 
     /**
      * channel transferring data
@@ -592,7 +593,10 @@ public class PeerConnection extends Connection {
 
     @Override
     protected void onDisconnect(BaseErrorCode ec) {
-        if (ec != ErrorCode.NO_ERROR) failed = true;
+        if (ec != ErrorCode.NO_ERROR) {
+                failed = true;
+                failStartTime = Time.currentTime();
+            }
 
         if (transfer != null) {
             transfer.addStats(statistics());
@@ -1105,6 +1109,10 @@ public class PeerConnection extends Connection {
 
     public boolean isFailed() {
         return failed;
+    }
+
+    public long getFailStartTime() {
+        return failStartTime;
     }
 
     public boolean isRequesting(PieceBlock b) {
