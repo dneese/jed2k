@@ -650,6 +650,7 @@ public class PeerConnection extends Connection {
         log.debug("{} << file status answer", endpoint);
         remotePieces = value.bitfield;
         if (transfer != null) {
+            transfer.updateAvailability(remotePieces);
             if (transfer.size() >= Constants.PIECE_SIZE) {
                 write(new HashSetRequest(transfer.getHash()));
             } else {

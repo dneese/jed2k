@@ -1,6 +1,7 @@
 package org.dkf.jed2k;
 
 import org.dkf.jed2k.data.PieceBlock;
+import org.dkf.jed2k.protocol.BitField;
 
 import java.util.*;
 
@@ -30,11 +31,14 @@ public class PiecePicker extends BlocksEnumerator {
 
     private byte pieceStatus[];
     private LinkedList<DownloadingPiece> downloadingPieces = new LinkedList<DownloadingPiece>();
+    // rarest-first: number of remote peers that have each piece
+    private int pieceAvailability[];
 
     public PiecePicker(int pieceCount, int blocksInLastPiece) {
         super(pieceCount, blocksInLastPiece);
     	assert(pieceCount > 0);
         pieceStatus = new byte[pieceCount];
+        pieceAvailability = new int[pieceCount];
         Arrays.fill(pieceStatus, PieceState.NONE.value);
     }
 
@@ -135,19 +139,24 @@ public class PiecePicker extends BlocksEnumerator {
      * @return true if new piece in download queue
      */
     public boolean chooseNextPiece() {
-        // start from first piece due to slow operation of writing data into end of file!
-        int roundRobin = 0;
+        // rarest-first: prefer the piece that fewest peers have.
+        // First pass looks for a piece with availability > 0 (ignoring missing/unknown pieces).
+        int best = -1;
+        int bestAvail = Integer.MAX_VALUE;
         for(int i = 0; i < pieceStatus.length; ++i) {
-            if (roundRobin == pieceStatus.length) roundRobin = 0;
-            int current = roundRobin;
-
-            if (pieceStatus[current] == PieceState.NONE.value) {
-                downloadingPieces.add(new DownloadingPiece(current, blocksInPiece(current)));
-                pieceStatus[current] = PieceState.DOWNLOADING.value;
-                return true;
+            if (pieceStatus[i] == PieceState.NONE.value) {
+                int a = pieceAvailability[i];
+                if (a < bestAvail) {
+                    bestAvail = a;
+                    best = i;
+                }
             }
+        }
 
-            ++roundRobin;
+        if (best != -1) {
+            downloadingPieces.add(new DownloadingPiece(best, blocksInPiece(best)));
+            pieceStatus[best] = PieceState.DOWNLOADING.value;
+            return true;
         }
 
         return false;
@@ -325,5 +334,28 @@ public class PiecePicker extends BlocksEnumerator {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Update rarest-first availability counters from a remote peer's bitfield.
+     * Called when a peer connects and sends its piece bitfield.
+     * @param pieces peer's bitfield (true = peer has the piece)
+     */
+    public final void updateAvailability(BitField pieces) {
+        if (pieces == null) return;
+        int count = Math.min(pieceAvailability.length, pieces.size());
+        for(int i = 0; i < count; ++i) {
+            if (pieces.getBit(i)) {
+                ++pieceAvailability[i];
+            }
+        }
+    }
+
+    /**
+     * Return the number of peers that currently have a given piece.
+     */
+    public final int availabilityOf(int pieceIndex) {
+        if (pieceIndex < 0 || pieceIndex >= pieceAvailability.length) return 0;
+        return pieceAvailability[pieceIndex];
     }
 }

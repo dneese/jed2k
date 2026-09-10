@@ -192,6 +192,15 @@ public class Transfer {
         return result;
     }
 
+    /**
+     * Update rarest-first piece availability from a remote peer's bitfield
+     */
+    public final void updateAvailability(BitField pieces) {
+        if (picker != null) {
+            picker.updateAvailability(pieces);
+        }
+    }
+
     public long getCreateTime() {
         return createTime;
     }
