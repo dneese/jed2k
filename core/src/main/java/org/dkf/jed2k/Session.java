@@ -40,6 +40,7 @@ import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ScheduledExecutorService;
 
 public class Session extends Thread {
     private static Logger log = LoggerFactory.getLogger(Session.class);
@@ -61,6 +62,7 @@ public class Session extends Thread {
     private BufferPool bufferPool = null;
     private ExecutorService diskIOService = Executors.newSingleThreadExecutor();
     private ExecutorService upnpService = Executors.newSingleThreadExecutor();
+    private ScheduledExecutorService serverQueryService = Executors.newScheduledThreadPool(1); // periodic server queries for source refresh
     private AtomicBoolean finished = new AtomicBoolean(false);
     private boolean aborted = false;
     private Statistics accumulator = new Statistics();
@@ -284,6 +286,17 @@ public class Session extends Thread {
             log.error("[listen] unexpected exception {}", e);
             closeListenSocket();
             pushAlert(new ListenAlert(e.getMessage(), settings.listenPort));
+        }
+
+        // start periodic server queries for source refresh
+        if (serverQueryService != null && knownServers.isEmpty() == false) {
+            serverQueryService.scheduleAtFixedRate(new Runnable() {
+                @Override
+                public void run() {
+                    queryAllKnownServersForSources();
+                }
+            }, 5, 5, TimeUnit.MINUTES);
+            log.info("[session] started periodic server queries every 5 minutes");
         }
 
         // initialize UDP connection for source requests
@@ -1171,4 +1184,18 @@ public class Session extends Thread {
     public synchronized DhtTracker getDhtTracker() {
         return dhtTracker.get();
     }
+
+    /**
+     * Periodically query all known servers for sources.
+     * Keeps the server source list fresh for new downloads.
+     */
+    void queryAllKnownServersForSources() {
+        if (knownServers.isEmpty() || udpConnection == null) return;
+        if (!transfers.isEmpty()) {
+            final Hash h = transfers.keySet().iterator().next();
+            final long size = transfers.values().iterator().next().size();
+            sendMultiServerSourcesRequest(h, size);
+        }
+    }
+
 }
