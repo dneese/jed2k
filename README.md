@@ -11,6 +11,7 @@ In GUI part used source code and design from [FrostWire](https://github.com/fros
 * [Amazon](https://www.amazon.com/DKF-software-Mule-on-Android/dp/B01LYN526Q) Obsolete
 * [Direct apk Release ver 38](https://github.com/a-pavlov/jed2k/releases/download/3.8/jed2k-android-release-38-b38-basic.apk)
 * [Direct apk Release ver 20 latest Google Play version before 30](https://github.com/a-pavlov/jed2k/releases/download/2.0_res/jdonkey-release-restore.apk)
+* [Direct apk Debug ver 39 (v3.9, NAT/UPnP/STUN improvements)](https://github.com/dneese/jed2k/releases/download/v3.9/jed2k-3.9-debug.apk)
 
 ## Implemented Features
 
@@ -18,6 +19,29 @@ In GUI part used source code and design from [FrostWire](https://github.com/fros
 * Searching sources for file using KAD(DHT) and servers
 * Downloading files
 * Internationalization
+
+## Version 3.9 release
+
+Improved NAT traversal and download stability. Fixes the common "many sources, high completeness, but download never starts" issue seen on connections behind Carrier-Grade NAT without a public (white) IP.
+
+### What changed
+- **Auto-UPnP on startup** - port is automatically forwarded through the router (both TCP and UDP) using the bundled `bitlet/weupnp` library. No manual router configuration needed.
+- **STUN / external IP fallback** - when UPnP is unavailable, the client detects the external IP via STUN/DNS and uses it to improve Kademlia NAT detection.
+- **More connections** - `sessionConnectionsLimit` raised from 20 to 200, `maxConnectionsPerSecond` from 10 to 25, so more peers can be contacted at once.
+- **Kademlia firewalled traversal** - NAT/firewall state is detected and reported via the existing KAD `Firewalled` algorithm (`startupnp` / `stopupnp` / `firewalled` console commands still available).
+- **Gradle wrapper (7.6.4) committed** - reproducible build with the Android Gradle Plugin 7.4.2 and `compileSdk 33`, no dependency on the host Gradle version.
+
+### Build the APK
+The repository ships a `gradlew` wrapper, so building is straightforward:
+```
+./gradlew :android:jdonkey:assembleBasicDebug
+```
+Debug APK output: `android/jdonkey/build/outputs/apk/basic/debug/`.
+
+GitHub Actions also builds a debug APK on every push (see `.github/workflows/build-apk.yml`). Download it from the **Actions** tab → artifact `jed2k-apk`.
+
+### Install
+Open the APK on your Android device and allow "install from unknown sources". The app remains unsigned (debug build) - fine for personal use.
 
 ## Version 3.0(30) release
 The Android SDK total update and fix some common issued implemented in latests version 30 release.
