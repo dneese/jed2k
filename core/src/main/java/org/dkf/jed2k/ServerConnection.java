@@ -276,6 +276,13 @@ public class ServerConnection extends Connection {
                         sendCallbackRequest(endpoint.getIP());
                         session.callbacks.put(endpoint.getIP(), value.hash);
                     }
+                    // low id requester still tries direct connection - some peers are reachable anyway
+                    try {
+                        transfer.addPeer(endpoint, PeerInfo.SERVER);
+                    } catch(JED2KException e) {
+                        e.printStackTrace();
+                        break;
+                    }
                 } else {
                     log.debug("to getHash {} added endpoint {}", value.hash, endpoint);
                     try {

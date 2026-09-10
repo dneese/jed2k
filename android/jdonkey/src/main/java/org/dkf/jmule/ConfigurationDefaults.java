@@ -94,34 +94,38 @@ final class ConfigurationDefaults {
 
 
         defaultValues.put(Constants.PREF_KEY_NICKNAME, "Nickname");
-        defaultValues.put(Constants.PREF_KEY_LISTEN_PORT, 30000l);
-        defaultValues.put(Constants.PREF_KEY_TRANSFER_MAX_TOTAL_CONNECTIONS, 100l);
+        defaultValues.put(Constants.PREF_KEY_LISTEN_PORT, 4661l);
+        defaultValues.put(Constants.PREF_KEY_TRANSFER_MAX_TOTAL_CONNECTIONS, 200l);
         defaultValues.put(Constants.PREF_KEY_CONN_SERVER_ON_START, false);
-        defaultValues.put(Constants.PREF_KEY_RECONNECT_TO_SERVER, false);
-        defaultValues.put(Constants.PREF_KEY_PING_SERVER, false);
+        defaultValues.put(Constants.PREF_KEY_RECONNECT_TO_SERVER, true);
+        defaultValues.put(Constants.PREF_KEY_PING_SERVER, true);
         defaultValues.put(Constants.PREF_KEY_SHOW_SERVER_MSG, true);
-        defaultValues.put(Constants.PREF_KEY_AUTO_START_SERVICE, false);
-        defaultValues.put(Constants.PREF_KEY_FORWARD_PORTS, false);
+        defaultValues.put(Constants.PREF_KEY_AUTO_START_SERVICE, true);
+        defaultValues.put(Constants.PREF_KEY_FORWARD_PORTS, true);
 
-        defaultValues.put(Constants.PREF_KEY_CONNECT_DHT, false);
+        defaultValues.put(Constants.PREF_KEY_CONNECT_DHT, true);
 
-        // servers section
+        // servers section - active eD2K servers, verified 09.2026
         ServerMet sm = new ServerMet();
         try {
-            sm.addServer(ServerMet.ServerMetEntry.create("5.45.85.226", 6584, "eMule Security", "www.emule-security.org"));
             sm.addServer(ServerMet.ServerMetEntry.create("176.123.5.89", 4725, "eMule Sunrise", "Not perfect, but real"));
-            sm.addServer(ServerMet.ServerMetEntry.create("46.105.126.71", 4661, "GrupoTS Server", "El foro de las series"));
-            sm.addServer(ServerMet.ServerMetEntry.create("37.221.65.76", 4232, "!! Sharing-Devils No.2 !!", "https://forum.sharing-devils.to"));
-            sm.addServer(ServerMet.ServerMetEntry.create("213.252.245.239", 43333, "Astra-3", "Astra-3"));
-            sm.addServer(ServerMet.ServerMetEntry.create("95.217.134.86", 22888, "Astra-2", "Astra-2 Server"));
-            sm.addServer(ServerMet.ServerMetEntry.create("185.105.3.69", 9191, "eDonkey Server No1", "eDonkey Server No1"));
-            sm.addServer(ServerMet.ServerMetEntry.create("92.38.163.210", 35037, "Astra-6", "Astra-6 Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("77.42.68.79", 4232, "Nordic Server", "FIN Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("91.208.162.87", 4232, "!! Sharing-Devils No.4 !!", "https://forum.sharing-devils.to"));
+            sm.addServer(ServerMet.ServerMetEntry.create("85.17.116.222", 6082, "ed2k-rust", "main server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("91.208.162.182", 4232, "MO-Server", "!NFO-Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("45.82.80.155", 5687, "eMule Security", "www.emule-security.org"));
+            sm.addServer(ServerMet.ServerMetEntry.create("85.121.5.137", 4232, "!! Sharing-Devils No.2 !!", "https://forum.sharing-devils.to"));
+            sm.addServer(ServerMet.ServerMetEntry.create("212.95.35.240", 4232, "eMule Cosmic", "We are not alone"));
+            sm.addServer(ServerMet.ServerMetEntry.create("213.141.198.207", 4232, "Mazinga Server", "Mazinga High-performance eDonkey server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("213.252.245.239", 43333, "Astra-3", "Astra-3 Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("185.25.48.89", 18357, "Akteon Server", "Akteon Server"));
             sm.addServer(ServerMet.ServerMetEntry.create("213.252.245.239", 33333, "Astra-5", "Astra-5 Server"));
-            sm.addServer(ServerMet.ServerMetEntry.create("45.142.215.35", 42011, "Pentium Pilat 2022", "Pentium Pilat 2022 Server"));
-            sm.addServer(ServerMet.ServerMetEntry.create("92.38.184.138", 51127, "Astra-1", "Astra-1 Server"));
-            sm.addServer(ServerMet.ServerMetEntry.create("5.188.6.125", 31031, "Gaal", "Gaal Server"));
-            sm.addServer(ServerMet.ServerMetEntry.create("185.105.3.69", 9797, "eDonkey Server No2", "eDonkey Server No2"));
-            sm.addServer(ServerMet.ServerMetEntry.create("180.166.24.38", 14142, "Poor-eServer-1", "Poor-eServer-1"));
+            sm.addServer(ServerMet.ServerMetEntry.create("185.237.185.226", 31031, "Gaal", "Gaal Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("57.131.35.107", 4232, "MO-ad-free", "IT-Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("141.227.165.99", 4232, "MO-ad-free", "AT-Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("193.187.90.12", 4661, "Drunken Donkey", "Everything or Nothing"));
+            sm.addServer(ServerMet.ServerMetEntry.create("95.217.134.86", 22888, "Astra-2", "Astra-2 Server"));
+            sm.addServer(ServerMet.ServerMetEntry.create("92.38.163.210", 35037, "Astra-6", "Astra-6 Server"));
             defaultValues.put(Constants.PREF_KEY_SERVERS_LIST, sm);
         } catch(JED2KException e) {
             // wtf?

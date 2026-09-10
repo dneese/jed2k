@@ -254,11 +254,25 @@ public abstract class SearchResultListAdapter extends AbstractListAdapter<Search
     private static final class SourcesCountComparator implements Comparator<SearchEntry> {
         public int compare(final SearchEntry lhs, SearchEntry rhs) {
             try {
+                int byCompleteness = Integer.signum(completeness(lhs) - completeness(rhs));
+                if (byCompleteness != 0) return byCompleteness;
                 return Integer.signum(lhs.getSources() - rhs.getSources());
             } catch (Exception e) {
                 // ignore, not really super important
             }
             return 0;
+        }
+
+        private static int completeness(final SearchEntry e) {
+            try {
+                int sources = e.getSources();
+                if (sources <= 0) return 0;
+                int complete = e.getCompleteSources();
+                if (complete > sources) complete = sources;
+                return complete * 100 / sources;
+            } catch (Exception ex) {
+                return 0;
+            }
         }
     }
 }

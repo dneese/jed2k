@@ -287,18 +287,18 @@ public class Transfer {
 
 	void secondTick(final Statistics accumulator, long tickIntervalMS) {
 
-        if (!isPaused() && !isAborted() && !isFinished() && connections.isEmpty()) {
+        if (!isPaused() && !isAborted() && !isFinished() && wantMorePeers()) {
 
             if (nextTimeForSourcesRequest < Time.currentTime()) {
                 log.debug("[transfer] request peers on server {}", hash);
                 session.sendSourcesRequest(hash, size);
-                nextTimeForSourcesRequest = Time.currentTime() + Time.minutes(1);
+                nextTimeForSourcesRequest = Time.currentTime() + Time.seconds(20);
             }
 
             if (nextTimeForDhtSourcesRequest < Time.currentTime()) {
                 log.debug("[transfer] request peers on KAD {}", hash);
                 session.sendDhtSourcesRequest(hash, size, this);
-                nextTimeForDhtSourcesRequest = Time.currentTime() + Time.minutes(10);
+                nextTimeForDhtSourcesRequest = Time.currentTime() + Time.minutes(2);
             }
         }
 

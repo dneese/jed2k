@@ -333,6 +333,10 @@ public class ED2KService extends JobIntentService {
     void startSession() {
         if (session != null) return;
         startingInProgress = true;
+        // optimal download defaults - more simultaneous peer connections
+        settings.sessionConnectionsLimit = 200;
+        settings.maxConnectionsPerSecond = 25;
+        settings.autoUPnP = true;
         session = new Session(settings);
         session.start();
         initializeDatabase();
