@@ -120,6 +120,11 @@ public class Transfer {
             needSaveResumeData = true;
         }
 
+        if (!pause) {
+            session.sendSourcesRequest(hash, size);
+            nextTimeForSourcesRequest = Time.currentTime() + Time.seconds(20);
+        }
+
         session.pushAlert(new TransferAddedAlert(this.hash));
     }
 
@@ -311,7 +316,7 @@ public class Transfer {
 
 	void secondTick(final Statistics accumulator, long tickIntervalMS) {
 
-        if (!isPaused() && !isAborted() && !isFinished() && wantMorePeers()) {
+        if (!isPaused() && !isAborted() && !isFinished()) {
 
             if (nextTimeForSourcesRequest < Time.currentTime()) {
                 log.debug("[transfer] request peers on server {}", hash);
