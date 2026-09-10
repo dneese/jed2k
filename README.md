@@ -11,6 +11,7 @@ In GUI part used source code and design from [FrostWire](https://github.com/fros
 * [Amazon](https://www.amazon.com/DKF-software-Mule-on-Android/dp/B01LYN526Q) Obsolete
 * [Direct apk Release ver 38](https://github.com/a-pavlov/jed2k/releases/download/3.8/jed2k-android-release-38-b38-basic.apk)
 * [Direct apk Release ver 20 latest Google Play version before 30](https://github.com/a-pavlov/jed2k/releases/download/2.0_res/jdonkey-release-restore.apk)
+* [Direct apk Debug ver 40 (v3.9.1, updated server list, source collection, optimal defaults)](https://github.com/dneese/jed2k/releases/download/v3.9.1/jed2k-3.9.1-debug.apk)
 * [Direct apk Debug ver 39 (v3.9, NAT/UPnP/STUN improvements)](https://github.com/dneese/jed2k/releases/download/v3.9/jed2k-3.9-debug.apk)
 
 ## Implemented Features
@@ -42,6 +43,18 @@ GitHub Actions also builds a debug APK on every push (see `.github/workflows/bui
 
 ### Install
 Open the APK on your Android device and allow "install from unknown sources". The app remains unsigned (debug build) - fine for personal use.
+
+## Version 3.9.1 release
+
+Improves source availability and out-of-the-box experience on top of v3.9.
+
+### What changed
+- **Fresh eD2K server list** - default servers updated to the active 2026 network (eMule Sunrise ~50k users, Nordic Server, Sharing-Devils No.2/No.4, ed2k-rust, MO-Server, Mazinga, Astra and others, verified 09.2026).
+- **Auto reconnection is on by default** - `reconnectToServer = true`: the session auto-reconnects to the best available server after a drop or on start, so server sources keep flowing without manual selection.
+- **Aggressive source collection** - file source requests now re-sent every 20 s (server) and every 2 min (KAD, was 1 min / 10 min) and are issued while the transfer still wants more peers, not only when the peer list is empty.
+- **Low-ID peers are no longer fully ignored** - on low-ID clients the client now also tries a direct TCP connection to low-ID endpoints (reachable peers still work), improving "waiting sources" cases.
+- **Smarter search result sorting** - results are ordered by completeness % (files with 100% complete sources first), then by the number of sources.
+- **Optimal install defaults** - UPnP port forwarding, DHT and auto-start enabled, server ping/reconnect on, listen port 4661, up to 200 connections.
 
 ## Version 3.0(30) release
 The Android SDK total update and fix some common issued implemented in latests version 30 release.
