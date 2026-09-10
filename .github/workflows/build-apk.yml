@@ -29,10 +29,6 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-      continue-on-error: true
-
-    - name: Generate Gradle wrapper
-      run: gradle wrapper --gradle-version 7.6.4
 
     - name: Build debug APK
       run: ./gradlew :android:jdonkey:assembleBasicDebug
