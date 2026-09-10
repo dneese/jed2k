@@ -132,7 +132,10 @@ public class ServerConnection extends Connection {
 
     @Override
     public void onServerList(ServerList value) throws JED2KException {
-        log.debug("server list {}", value);
+        log.debug("server list received");
+        if (value.getList() != null) {
+            session.addKnownServers(value.getList());
+        }
     }
 
     @Override

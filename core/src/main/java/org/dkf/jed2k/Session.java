@@ -51,6 +51,7 @@ public class Session extends Thread {
     Map<Hash, Transfer> transfers = new HashMap<Hash, Transfer>();
     ArrayList<PeerConnection> connections = new ArrayList<PeerConnection>(); // incoming connections
     UDPConnection udpConnection = null; // for UDP source requests
+    ArrayList<InetSocketAddress> knownServers = new ArrayList<InetSocketAddress>(); // servers from OP_SERVERLIST
     Settings settings = null;
     long lastTick = Time.currentTime();
     HashMap<Integer, Hash> callbacks = new HashMap<Integer, Hash>();
@@ -783,16 +784,18 @@ public class Session extends Thread {
     }
 
     void sendSourcesRequest(final Hash h, final long size) {
-        // send via TCP (existing)
+        // send via TCP to connected server (existing)
         if (serverConection != null) serverConection.sendFileSourcesRequest(h, size);
-        // also send via UDP for faster response
+        // send via UDP to connected server
         if (udpConnection != null && serverConection != null) {
             try {
                 udpConnection.sendSourcesRequest(h, size, serverConection.getAddress());
             } catch(Exception e) {
-                log.debug("UDP source request failed: {}", e.getMessage());
+                log.debug("UDP source request to connected server failed: {}", e.getMessage());
             }
         }
+        // send via UDP to ALL known servers for faster discovery
+        sendMultiServerSourcesRequest(h, size);
     }
 
     void sendDhtSourcesRequest(final Hash h, final long size, final Transfer t) {
@@ -802,6 +805,40 @@ public class Session extends Thread {
                 if (dht != null) dht.searchSources(h, size, new DhtSourcesCallback(this, t));
             } catch(JED2KException e) {
                 log.error("[session] dht search sources error {}", e);
+            }
+        }
+    }
+
+    void addKnownServers(List<Endpoint> servers) {
+        for (Endpoint ep : servers) {
+            int ip = ep.getIP();
+            int port = ep.getPort() & 0xFFFF;
+            InetSocketAddress server = new InetSocketAddress(Utils.int2Address(ip), port);
+            boolean found = false;
+            for (InetSocketAddress existing : knownServers) {
+                if (existing.getPort() == server.getPort() && existing.getAddress() != null && existing.getAddress().equals(server.getAddress())) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                knownServers.add(server);
+                log.debug("[session] added known server: {}:[{}]", server.getAddress(), server.getPort());
+            }
+        }
+    }
+
+    /**
+     * Send source requests to all known servers for faster discovery
+     */
+    void sendMultiServerSourcesRequest(final Hash h, final long size) {
+        if (knownServers.isEmpty()) return;
+        if (udpConnection == null) return;
+        for (InetSocketAddress server : knownServers) {
+            try {
+                udpConnection.sendSourcesRequest(h, size, server);
+            } catch(Exception e) {
+                log.debug("[session] UDP source request to {} failed: {}", server, e.getMessage());
             }
         }
     }
