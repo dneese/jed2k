@@ -14,11 +14,11 @@ public class Settings {
     public int modBuild = 0;
     public int maxFailCount = 20;
     public int maxPeerListSize = 100;
-    public int minPeerReconnectTime = 10;
+    public int minPeerReconnectTime = 5;
     public int peerConnectionTimeout = 5;
     public int sessionConnectionsLimit = 20;
     public int bufferPoolSize = 250;            // dataSize of buffer pool in blocks of 180K
-    public int maxConnectionsPerSecond = 10;    // for testing purposes
+    public int maxConnectionsPerSecond = 25;
     public int compressionVersion = 0;          // use 1 for activate compression
     public int serverSearchTimeout = 15;        // seconds
     public boolean reconnectoToServer = false;  // reconnect to server if connection was closed due to error
