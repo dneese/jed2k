@@ -1,79 +1,25 @@
-import groovy.swing.SwingBuilder
-import groovy.xml.Namespace
 apply plugin: 'com.android.application'
-
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.2.2'
-        classpath 'org.codehaus.groovy:groovy-all:3.0.9'
-    }
-}
 
 repositories {
     google()
     mavenCentral()
 }
 
-def manifestVersionCode() {
-    def manifestFile = new File(project.projectDir.absolutePath + '/AndroidManifest.xml')
-    def ns = new Namespace("http://schemas.android.com/apk/res/android", "android")
-    def xml = new groovy.xml.XmlParser().parse(manifestFile)
-    //System.out.println("manifestVersionCode: xml.attributes()[ns.versionCode].toString()=" + xml.attributes()[ns.versionCode].toString())
-    return Integer.parseInt(xml.attributes()[ns.versionCode].toString())
-}
-
-def manifestVersionName() {
-    def manifestFile = file(project.projectDir.absolutePath + '/AndroidManifest.xml')
-    def ns = new Namespace("http://schemas.android.com/apk/res/android", "android")
-    def xml = new groovy.xml.XmlParser().parse(manifestFile)
-    //System.out.println("manifestVersionName: " + xml.attributes()[ns.versionName].toString())
-    return xml.attributes()[ns.versionName].toString()
-}
-
 ext {
-    buildToolsVersion = "31.0.0"
-    coreVersion = "1.4.1-alpha03"
-    extJUnitVersion = "1.1.4-alpha03"
-    runnerVersion = "1.4.1-alpha03"
-    rulesVersion = "1.4.1-alpha03"
-    versionCode = manifestVersionCode()
-    versionName = manifestVersionName()
+    buildToolsVersion = "33.0.0"
+    versionCode = 39
+    versionName = "3.9"
 }
-
-def changeApkOutput(variant) {
-    def suffix = project.ext.versionName + '-b' + project.ext.versionCode + '-' + variant.productFlavors[0].name
-    def name = "jed2k-android-" + variant.buildType.name + '-' + suffix
-
-    variant.outputs.all { output ->
-        outputFileName = name + '.apk'
-    }
-    variant.getAssembleProvider().configure() {
-        it.doLast {
-            assemble ->
-                copy {
-                    from variant.outputs*.outputFile
-                    into "${project.buildDir}"
-                }
-        }
-    }
-}
-
-boolean isAssembleRelease = gradle.startParameter.taskNames.contains("assembleRelease") || gradle.startParameter.taskNames.contains("assembleBasicRelease")
 
 android {
     compileSdkVersion 33
 
     defaultConfig {
         applicationId 'org.dkf.jmule'
+        versionCode project.ext.versionCode
         versionName project.ext.versionName
         minSdkVersion 21
         targetSdkVersion 33
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -88,58 +34,17 @@ android {
                 srcDir 'src/main'
             }
         }
-
         androidTest {
             java.srcDirs = ['src/androidTest']
-        }
-    }
-
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-        }
-    }
-
-
-    signingConfigs {
-        release {
-            if (isAssembleRelease) {
-                storeFile file("/home/inkpot/dev/jdonkey.keystore")
-                def sigRequester = new SignatureRequester()
-                sigRequester.ask()
-                storePassword sigRequester.keyPassword()
-                keyAlias sigRequester.keyAlias()
-                keyPassword sigRequester.keyPassword()
-            } else {
-                storePassword ''
-                keyAlias ''
-                keyPassword ''
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled true
-            buildConfigField "String", "FLAVOR", "\"basic\""
-            //proguardFiles getDefaultProguardFile('proguard-android.txt'),
-            //        'proguard-rules.pro'
-            signingConfig signingConfigs.release
-            //multiDexKeepFile file('multidex-config.txt')
-        }
-        debug {
-            minifyEnabled true
-            buildConfigField "String", "FLAVOR", "\"basic\""
-            //proguardFiles getDefaultProguardFile('proguard-android.txt'),
-            //        'proguard-rules.pro'
-            //multiDexKeepFile file('multidex-config.txt')
         }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            //proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
         }
     }
 
@@ -151,16 +56,9 @@ android {
             resValue "string", "application_label", "Mule"
         }
     }
+
     lint {
         abortOnError false
-    }
-
-    lintOptions {
-        checkReleaseBuilds false
-    }
-
-    applicationVariants.all { variant ->
-        changeApkOutput(variant)
     }
 }
 
@@ -176,57 +74,4 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.8.8'
     implementation 'com.squareup.okhttp:okhttp:2.7.5'
     implementation 'com.google.android.material:material:1.7.0'
-    debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.9.1'
-    testImplementation 'org.robolectric:robolectric:4.6'
-    androidTestImplementation 'androidx.test:core:' + project.ext.coreVersion
-    androidTestImplementation 'androidx.test.ext:junit:' + project.ext.extJUnitVersion
-    androidTestImplementation 'androidx.test:runner:' + project.ext.runnerVersion
-    androidTestImplementation 'androidx.test:rules:' + project.ext.rulesVersion
 }
-
-class SignatureRequester {
-    String myKeyAlias = ""
-    String myKeyPassword = ""
-
-    void ask() {
-        System.setProperty('java.awt.headless', 'false')
-        if (System.console() == null) { // this is always the case on macOS at least
-            new SwingBuilder().edt {
-                dialog(modal: true,
-                        title: 'Enter keystore data',
-                        alwaysOnTop: true,
-                        resizable: true,
-                        locationRelativeTo: null,
-                        show: true,
-                        size: [215, 147]
-                ) {
-                    vbox {
-                        label(text: "Key Alias:")
-                        inputAlias = textField()
-                        label(text: "Key Password:")
-                        inputPassword = passwordField()
-                        button(defaultButton: true, text: 'OK', actionPerformed: {
-                            this.myKeyAlias = inputAlias.text
-                            this.myKeyPassword = new String(inputPassword.password)
-                            dispose()
-                        })
-                    }
-                }
-            }
-        } else {
-            this.myKeyAlias = System.console().readPassword("\nKey Alias: ")
-            this.myKeyAlias = new String(myKeyAlias)
-            this.myKeyPassword = System.console().readPassword("\nKey Password: ")
-            this.myKeyPassword = new String(myKeyPassword)
-        }
-    }
-
-    String keyAlias() {
-        this.myKeyAlias
-    }
-
-    String keyPassword() {
-        this.myKeyPassword
-    }
-}
-

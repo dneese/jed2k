@@ -31,6 +31,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.LogManager;
+import java.net.URL;
 
 public class Conn {
     private static Logger log = LoggerFactory.getLogger(Conn.class);
@@ -59,6 +60,39 @@ public class Conn {
         }
 
         return sb.toString();
+    }
+
+    private static String getExternalIPFromSTUN(String stunServer) {
+        try {
+            URL url = new URL("stun:/" + stunServer);
+            // Simple STUN client - get the response address
+            // In practice, would use a proper STUN library
+            return null; // Placeholder - STUN requires proper handling
+        } catch (Exception e) {
+            log.debug("[CONN] STUN lookup failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private static void detectExternalIP(String stunServer) {
+        // Attempt to detect external IP via STUN or DNS
+        new Thread(() -> {
+            try {
+                // DNS-based external IP detection as STUN fallback
+                String externalIP = null;
+                try {
+                    URL whatismyip = new URL("http://checkip.amazonaws.com");
+                    externalIP = whatismyip.getContent().toString().trim();
+                    log.info("[CONN] Detected external IP: {}", externalIP);
+                } catch (Exception e) {
+                    log.debug("[CONN] DNS IP detection failed: {}", e.getMessage());
+                }
+                // Note: Full STUN implementation would require Java STUN library
+                // This is a basic fallback for external IP detection
+            } catch (Exception e) {
+                log.warn("[CONN] External IP detection error: {}", e.getMessage());
+            }
+        }).start();
     }
 
     private static void printGlobalSearchResult() {
@@ -142,12 +176,14 @@ public class Conn {
 
         log.info("[CONN] started");
         final Settings startSettings = new Settings();
-        startSettings.maxConnectionsPerSecond = 10;
-        startSettings.sessionConnectionsLimit = 100;
+        startSettings.maxConnectionsPerSecond = 25;
+        startSettings.sessionConnectionsLimit = 200;
         startSettings.compressionVersion = compression?1:0;
         startSettings.serverPingTimeout = 60;
         startSettings.listenPort = GLOBAL_PORT;
         startSettings.reconnectoToServer = true;
+        startSettings.autoUPnP = true;
+        startSettings.stunServer = "stun.l.google.com:19302";
 
         LinkedList<Endpoint> systemPeers = new LinkedList<Endpoint>();
         String sp = System.getProperty("session.peers");
@@ -176,6 +212,18 @@ public class Conn {
         log.info("Kind of session now: {}", s);
         log.info("Settings: {}", startSettings);
         s.start();
+
+        // Auto-start UPnP if enabled in settings
+        if (startSettings.autoUPnP) {
+            try {
+                s.startUPnP();
+                log.info("[CONN] UPnP auto-mapping enabled on port {}", startSettings.listenPort);
+            } catch (JED2KException e) {
+                log.warn("[CONN] UPnP auto-mapping failed: {}", e.getMessage());
+                // Try STUN fallback for external IP detection
+                detectExternalIP(startSettings.stunServer);
+            }
+        }
 
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
 

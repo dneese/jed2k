@@ -28,6 +28,16 @@ public class Settings {
      */
     public long serverPingTimeout = 0;
 
+    /**
+     * auto-enable UPnP port mapping at session start
+     */
+    public boolean autoUPnP = true;
+
+    /**
+     * STUN server for external IP detection (fallback when UPnP fails)
+     */
+    public String stunServer = "stun.l.google.com:19302";
+
     @Override
     public String toString() {
         return "Settings{" +

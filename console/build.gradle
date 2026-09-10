@@ -6,24 +6,25 @@ version = '2.0'
 
 description = "jed2k console application"
 
-sourceCompatibility = JavaVersion.VERSION_11
-targetCompatibility = JavaVersion.VERSION_11
-
-applicationDefaultJvmArgs = ["-Djava.util.logging.config.file=/home/inkpot/dev/jed2k/core/src/main/resources/logging.properties", "-ea"]
+repositories {
+    mavenCentral()
+}
 
 application {
-    mainClass = 'org.dkf.jed2k.Kad'
+    mainClass = 'org.dkf.jed2k.Conn'
 }
 
 jar {
     manifest {
-        attributes 'Main-Class': 'org.dkf.jed2k.Kad'
+        attributes 'Main-Class': 'org.dkf.jed2k.Conn'
     }
 }
 
 task fatJar(type: Jar) {
-    manifest.from jar.manifest
-    classifier = 'all'
+    manifest {
+        attributes 'Main-Class': 'org.dkf.jed2k.Conn'
+    }
+    archiveClassifier = 'all'
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     } {
@@ -32,15 +33,6 @@ task fatJar(type: Jar) {
         exclude "META-INF/*.RSA"
     }
     with jar
-}
-
-artifacts {
-    archives fatJar
-}
-
-repositories {
-    mavenCentral()
-    jcenter()
 }
 
 run {

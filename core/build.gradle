@@ -2,20 +2,13 @@ plugins {
     id 'java-library'
 }
 
-apply plugin: 'java'
-apply plugin: 'application'
-
 group = 'org.dkf.jed2k'
 version = '2.0'
 
 description = "jed2k core library"
 
-sourceCompatibility = JavaVersion.VERSION_11
-targetCompatibility = JavaVersion.VERSION_11
-
 repositories {
     mavenCentral()
-    jcenter()
 }
 
 test {
