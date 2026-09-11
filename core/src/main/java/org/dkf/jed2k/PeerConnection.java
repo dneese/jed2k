@@ -1134,23 +1134,38 @@ public class PeerConnection extends Connection {
 
     /**
      * request new blocks from associated transfer's picker
+     * keeps pipeline of in-flight block requests filled up to REQUEST_QUEUE_SIZE
      */
     void requestBlocks() {
-        if (transfer == null || !transfer.hasPicker() || transferringData || !downloadQueue.isEmpty()) return;
+        if (transfer == null || !transfer.hasPicker() || transferringData || downloadQueue.size() >= Constants.REQUEST_QUEUE_SIZE) return;
+        int slots = Constants.REQUEST_QUEUE_SIZE - downloadQueue.size();
         LinkedList<PieceBlock> blocks = new LinkedList<PieceBlock>();
         PiecePicker picker = transfer.getPicker();
-        picker.pickPieces(blocks, Constants.REQUEST_QUEUE_SIZE, getPeer(), speed());
-        RequestParts64 reqp = new RequestParts64(transfer.getHash());
+        picker.pickPieces(blocks, slots, getPeer(), speed());
 
+        int added = 0;
         while(!blocks.isEmpty() && downloadQueue.size() < Constants.REQUEST_QUEUE_SIZE) {
             PieceBlock b = blocks.poll();
             downloadQueue.add(new PendingBlock(b, transfer.size()));
-            assert !reqp.isFool();
-            reqp.append(b.range(transfer.size()));
-            // do not flush (write) structure to remote here like in libed2k since order always contain no more than 3 blocks
+            added++;
         }
 
         log.debug("request blocks completed, download queue dataSize {}", downloadQueue.size());
+        // send newly added blocks as RequestParts64 packets
+        // each packet holds no more than PARTS_IN_REQUEST parts (wire format is fixed)
+        if (added == 0) return;
+        RequestParts64 reqp = new RequestParts64(transfer.getHash());
+        int written = 0;
+        int start = downloadQueue.size() - added;
+        for (int i = start; i < downloadQueue.size(); ++i) {
+            reqp.append(downloadQueue.get(i).block.range(transfer.size()));
+            written++;
+            if (written == Constants.PARTS_IN_REQUEST) {
+                write(reqp);
+                reqp = new RequestParts64(transfer.getHash());
+                written = 0;
+            }
+        }
         if (!reqp.isEmpty()) {
             write(reqp);
         }

@@ -299,7 +299,31 @@ public class SearchRequest implements Serializable {
             }
         }
 
-        if (res.size() - beforeCount > SEARCH_REQ_ELEM_COUNT) throw new JED2KException(SearchCode.QUERY_TOO_COMPLEX);
+        // instead of rejecting overly complex queries, truncate the expression
+        // to the maximum allowed number of elements keeping the result syntactically valid
+        if (res.size() - beforeCount > SEARCH_REQ_ELEM_COUNT) {
+            while (res.size() - beforeCount > SEARCH_REQ_ELEM_COUNT) {
+                res.remove(res.size() - 1);
+            }
+
+            // drop trailing dangling operator or unclosed parentheses group
+            boolean changed = true;
+            while (changed) {
+                changed = false;
+                int open = 0;
+                for (int i = beforeCount; i < res.size(); ++i) {
+                    if (res.get(i) instanceof OpenParen) ++open;
+                    else if (res.get(i) instanceof CloseParen) --open;
+                }
+                if (res.size() > beforeCount) {
+                    Serializable tail = res.get(res.size() - 1);
+                    if ((tail instanceof BooleanEntry) || (tail instanceof OpenParen) || open > 0) {
+                        res.remove(res.size() - 1);
+                        changed = true;
+                    }
+                }
+            }
+        }
 
         return res;
     }
@@ -433,6 +457,25 @@ public class SearchRequest implements Serializable {
         }
 
         return null;
+    }
+
+    /**
+     * Validate search query without constructing the request.
+     * Throws JED2KException if query is malformed (too long, invalid operators, etc.)
+     */
+    public static void validate(
+            long minSize,
+            long maxSize,
+            int sourcesCount,
+            int completeSourcesCount,
+            String fileType,
+            String fileExtension,
+            String codec,
+            int mediaLength,
+            int mediaBitrate,
+            String value) throws JED2KException {
+        packRequest(string2Entries(minSize, maxSize, sourcesCount, completeSourcesCount,
+                fileType, fileExtension, codec, mediaLength, mediaBitrate, value));
     }
 
     public static SearchRequest makeRequest(

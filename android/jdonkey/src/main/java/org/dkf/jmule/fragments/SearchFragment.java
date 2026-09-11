@@ -22,6 +22,8 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.SparseArray;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -29,11 +31,13 @@ import android.view.View.OnClickListener;
 import android.widget.*;
 import org.apache.commons.io.FilenameUtils;
 import org.dkf.jed2k.alert.*;
+import org.dkf.jed2k.exception.JED2KException;
+import org.dkf.jed2k.protocol.SearchEntry;
+import org.dkf.jed2k.protocol.server.search.SearchRequest;
 import org.dkf.jmule.AlertListener;
 import org.dkf.jmule.ConfigurationManager;
 import org.dkf.jmule.Constants;
 import org.dkf.jmule.MediaType;
-import org.dkf.jed2k.protocol.SearchEntry;
 import org.dkf.jmule.Engine;
 import org.dkf.jmule.R;
 import org.dkf.jmule.adapters.SearchResultListAdapter;
@@ -71,6 +75,29 @@ public final class SearchFragment extends AbstractFragment implements
     private final SparseArray<Byte> toTheLeftOf = new SparseArray<>(9);
 
     private boolean awaitingResults = false;
+
+    // Search timeout watchdog
+    private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
+    private static final long SEARCH_TIMEOUT_MS = 60_000;
+    private int pendingSearches = 0;
+    private final Runnable searchTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (pendingSearches > 0) {
+                log.info("search timeout after {}ms, {} searches still pending", SEARCH_TIMEOUT_MS, pendingSearches);
+                pendingSearches = 0;
+                awaitingResults = false;
+                searchProgress.setProgressEnabled(false);
+                showSearchView(getView());
+                if (getView() != null) {
+                    UIUtils.showInformationDialog(getView().getContext(),
+                            R.string.search_timed_out,
+                            R.string.search_timed_out_title,
+                            false, null);
+                }
+            }
+        }
+    };
 
     public SearchFragment() {
         super(R.layout.fragment_search);
@@ -141,6 +168,7 @@ public final class SearchFragment extends AbstractFragment implements
 
     @Override
     public void onDestroy() {
+        timeoutHandler.removeCallbacks(searchTimeoutRunnable);
         Engine.instance().removeListener(this);
         super.onDestroy();
     }
@@ -249,50 +277,73 @@ public final class SearchFragment extends AbstractFragment implements
         String expression = query.trim();
         if (expression.isEmpty()) return;
 
-        try {
-             if (!Engine.instance().isSafeMode() || !Engine.instance().isFiltered(expression)) {
-                // server search when one server connected and user chose server search or dht is not enabled
-                if (!Engine.instance().getCurrentServerId().isEmpty()
-                        && (searchParametersView.isSearchByServer() || !Engine.instance().isDhtEnabled())) {
-                    log.info("perform search on servers");
-                    awaitingResults = true;
-                    adapter.clear();
-                    fileTypeCounter.clear();
-                    refreshFileTypeCounters(false);
-                    currentQuery = query;
-                    boolean progressEnabled = false;
-                    Engine.instance().performSearch(
-                            searchParametersView.getMinSize() * 1024 * 1024
-                            , searchParametersView.getMaxSize() * 1024 * 1024
-                            , searchParametersView.getSourcesCount()
-                            , searchParametersView.getCompleteSources()
-                            , searchParametersView.getChecked()
-                            , ""
-                            , ""
-                            , 0
-                            , 0
-                            , expression);
+        // Cancel any pending search (stale guard)
+        if (pendingSearches > 0) {
+            log.info("cancel previous pending search (pending={}) before starting new", pendingSearches);
+            pendingSearches = 0;
+            awaitingResults = false;
+            timeoutHandler.removeCallbacks(searchTimeoutRunnable);
+        }
 
-                    searchProgress.setProgressEnabled(true);
-                    showSearchView(getView());
+        try {
+            // Validate query before dispatching
+            long minSize = searchParametersView.getMinSize() * 1024L * 1024L;
+            long maxSize = searchParametersView.getMaxSize() * 1024L * 1024L;
+            int sources = searchParametersView.getSourcesCount();
+            int complete = searchParametersView.getCompleteSources();
+            String fileType = searchParametersView.getChecked();
+            String fileExtension = "";
+            String codec = "";
+            int mediaLength = 0;
+            int mediaBitrate = 0;
+
+            try {
+                SearchRequest.validate(minSize, maxSize, sources, complete, fileType, fileExtension, codec, mediaLength, mediaBitrate, expression);
+            } catch (JED2KException e) {
+                log.error("search query validation failed: {}", e.getMessage());
+                UIUtils.showInformationDialog(getView().getContext(),
+                        R.string.search_failed_title,
+                        R.string.search_failed_title,
+                        false, null);
+                return;
+            }
+
+             if (!Engine.instance().isSafeMode() || !Engine.instance().isFiltered(expression)) {
+                adapter.clear();
+                fileTypeCounter.clear();
+                refreshFileTypeCounters(false);
+                currentQuery = query;
+
+                boolean serverAvailable = !Engine.instance().getCurrentServerId().isEmpty();
+                boolean dhtAvailable = Engine.instance().isDhtEnabled();
+                boolean wantServer = serverAvailable && (searchParametersView.isSearchByServer() || !dhtAvailable);
+                boolean wantDht = dhtAvailable && (!searchParametersView.isSearchByServer() || !serverAvailable);
+
+                // When both server and DHT available, search both in parallel
+                if (serverAvailable && dhtAvailable && searchParametersView.isSearchByServer()) {
+                    wantServer = true;
+                    wantDht = true;
                 }
-                // DHT search when dht enabled and user chose kad or no one server connected
-                else if (Engine.instance().isDhtEnabled()
-                        && (!searchParametersView.isSearchByServer() || Engine.instance().getCurrentServerId().isEmpty())) {
-                    log.info("perform search on DHT");
+
+                pendingSearches = 0;
+
+                if (wantServer) {
+                    log.info("perform search on servers");
+                    Engine.instance().performSearch(minSize, maxSize, sources, complete, fileType, fileExtension, codec, mediaLength, mediaBitrate, expression);
+                    pendingSearches++;
+                }
+
+                if (wantDht) {
+                    log.info("perform search on KAD");
+                    Engine.instance().performSearchDhtKeyword(expression, minSize, maxSize, sources, complete);
+                    pendingSearches++;
+                }
+
+                if (pendingSearches > 0) {
                     awaitingResults = true;
-                    adapter.clear();
-                    fileTypeCounter.clear();
-                    refreshFileTypeCounters(false);
-                    currentQuery = query;
-                    // takes first item in search expression for DHT search
-                    Engine.instance().performSearchDhtKeyword(expression
-                            , searchParametersView.getMinSize() * 1024 * 1024
-                            , searchParametersView.getMaxSize() * 1024 * 1024
-                            , searchParametersView.getSourcesCount()
-                            , searchParametersView.getCompleteSources());
                     searchProgress.setProgressEnabled(true);
                     showSearchView(getView());
+                    startSearchTimeout();
                 }
             } else {
                  UIUtils.showInformationDialog(getView().getContext()
@@ -313,12 +364,20 @@ public final class SearchFragment extends AbstractFragment implements
 
     public void performSearchMore() {
         if (!Engine.instance().getCurrentServerId().isEmpty()) {
+            if (pendingSearches > 0) {
+                pendingSearches = 0;
+                awaitingResults = false;
+                timeoutHandler.removeCallbacks(searchTimeoutRunnable);
+                adapter.clear();
+            }
+            pendingSearches = 1;
             awaitingResults = true;
             adapter.clear();
             refreshFileTypeCounters(false);
             Engine.instance().performSearchMore();
             searchProgress.setProgressEnabled(true);
             showSearchView(getView());
+            startSearchTimeout();
         }
     }
 
@@ -328,8 +387,10 @@ public final class SearchFragment extends AbstractFragment implements
     }
 
     private void cancelSearch() {
-        log.info("cancel search wait res {}", awaitingResults?"YES":"NO");
-        if (awaitingResults) {
+        log.info("cancel search pending={}", pendingSearches);
+        timeoutHandler.removeCallbacks(searchTimeoutRunnable);
+        if (awaitingResults || pendingSearches > 0) {
+            pendingSearches = 0;
             awaitingResults = false;
             adapter.clear();
             fileTypeCounter.clear();
@@ -340,26 +401,39 @@ public final class SearchFragment extends AbstractFragment implements
         }
     }
 
+    private void startSearchTimeout() {
+        timeoutHandler.removeCallbacks(searchTimeoutRunnable);
+        timeoutHandler.postDelayed(searchTimeoutRunnable, SEARCH_TIMEOUT_MS);
+    }
+
     private void searchCompleted(final SearchResultAlert alert) {
-        if (awaitingResults) {
-            awaitingResults = false;
+        if (pendingSearches > 0) {
+            pendingSearches--;
+        }
+
+        if (alert.getResults() != null && !alert.getResults().isEmpty()) {
             adapter.addResults(alert.getResults(), alert.isHasMoreResults());
 
-            // temporary solution, next use filter by hash to support related search
             for (SearchEntry entry : alert.getResults()) {
                 fileTypeCounter.increment(MediaType.getMediaTypeForExtension(FilenameUtils.getExtension(entry.getFileName())));
             }
         }
 
-        adapter.setFileType(ConfigurationManager.instance().getLastMediaTypeFilter());
+        // All parts completed or single-source search done
+        if (pendingSearches <= 0) {
+            pendingSearches = 0;
+            awaitingResults = false;
+            timeoutHandler.removeCallbacks(searchTimeoutRunnable);
 
-        refreshFileTypeCounters(true);
-        searchProgress.setProgressEnabled(false);
-        showSearchView(getView());
+            adapter.setFileType(ConfigurationManager.instance().getLastMediaTypeFilter());
+            refreshFileTypeCounters(true);
+            searchProgress.setProgressEnabled(false);
+            showSearchView(getView());
+        }
     }
 
     private void showSearchView(View view) {
-        if (awaitingResults) {
+        if (awaitingResults || pendingSearches > 0) {
             switchView(view, R.id.fragment_search_search_progress);
         } else {
             switchView(view, R.id.fragment_search_list);

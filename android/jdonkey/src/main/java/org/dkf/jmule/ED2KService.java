@@ -344,7 +344,7 @@ public class ED2KService extends JobIntentService {
         startingInProgress = false;
 
         try {
-            if (forwardPorts) session.startUPnP();
+            if (forwardPorts || settings.autoUPnP) session.startUPnP();
             else session.stopUPnP();
         } catch(JED2KException e) {
             log.error("start upnp error {}", e);

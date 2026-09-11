@@ -40,6 +40,7 @@ import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ScheduledExecutorService;
 
 public class Session extends Thread {
@@ -225,6 +226,65 @@ public class Session extends Thread {
             }
 
             session.pushAlert(new SearchResultAlert(filtered, false));
+        }
+    }
+
+    private static class MultiWordDhtCallback implements Listener {
+        private final Session session;
+        private final int totalWords;
+        private final long minSize;
+        private final long maxSize;
+        private final int sources;
+        private final int completeSources;
+        private final AtomicInteger completedWords = new AtomicInteger(0);
+        private final ConcurrentHashMap<Hash, Integer> hashCounts = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Hash, KadSearchEntry> hashEntries = new ConcurrentHashMap<>();
+
+        MultiWordDhtCallback(Session session, int totalWords, long minSize, long maxSize, int sources, int completeSources) {
+            this.session = session;
+            this.totalWords = totalWords;
+            this.minSize = minSize;
+            this.maxSize = maxSize;
+            this.sources = sources;
+            this.completeSources = completeSources;
+        }
+
+        @Override
+        public void process(List<KadSearchEntry> data) {
+            Set<Hash> thisWordHashes = new HashSet<>();
+            for (KadSearchEntry e : data) {
+                Hash h = e.getHash();
+                thisWordHashes.add(h);
+                hashEntries.putIfAbsent(h, e);
+            }
+            for (Hash h : thisWordHashes) {
+                hashCounts.merge(h, 1, Integer::sum);
+            }
+
+            completeOne();
+        }
+
+        /** word search could not be started (e.g DHT_REQUEST_ALREADY_RUNNING) - count it as empty word */
+        void onWordSkipped() {
+            completeOne();
+        }
+
+        private void completeOne() {
+            if (completedWords.incrementAndGet() == totalWords) {
+                List<SearchEntry> filtered = new LinkedList<>();
+                for (Map.Entry<Hash, Integer> entry : hashCounts.entrySet()) {
+                    if (entry.getValue() >= totalWords) {
+                        KadSearchEntry e = hashEntries.get(entry.getKey());
+                        if (e == null) continue;
+                        if (minSize > 0 && e.getFileSize() < minSize) continue;
+                        if (maxSize > 0 && e.getFileSize() > maxSize) continue;
+                        if (sources > 0 && e.getSources() < sources) continue;
+                        if (completeSources > 0 && e.getCompleteSources() < completeSources) continue;
+                        filtered.add(e);
+                    }
+                }
+                session.pushAlert(new SearchResultAlert(filtered, false));
+            }
         }
     }
 
@@ -616,6 +676,9 @@ public class Session extends Thread {
             public void run() {
                 if (serverConection != null) {
                     serverConection.search(value);
+                } else {
+                    log.warn("[session] no server connection, search dropped");
+                    Session.this.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
                 }
             }
         });
@@ -627,15 +690,54 @@ public class Session extends Thread {
             @Override
             public void run() {
                 DhtTracker tracker = dhtTracker.get();
-                if (tracker != null && !tracker.isAborted()) {
-                    try {
-                        tracker.searchKeywords(keyword, new DhtKeywordsCallback(s, minSize, maxSize, sources, completeSources));
-                    } catch(JED2KException e) {
-                        log.error("[session] unable to start search keyword {} in DHT {}", keyword, e);
+                if (tracker == null || tracker.isAborted()) {
+                    log.warn("[session] DHT tracker not active, keyword search dropped");
+                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
+                    return;
+                }
+                try {
+                    List<String> words = splitKeywords(keyword);
+                    if (words.isEmpty()) {
+                        log.warn("[session] no search keywords extracted from '{}'", keyword);
+                        s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
+                        return;
                     }
+                    if (words.size() == 1) {
+                        tracker.searchKeywords(words.get(0), new DhtKeywordsCallback(s, minSize, maxSize, sources, completeSources));
+                    } else {
+                        MultiWordDhtCallback callback = new MultiWordDhtCallback(s, words.size(), minSize, maxSize, sources, completeSources);
+                        for (String word : words) {
+                            try {
+                                tracker.searchKeywords(word, callback);
+                            } catch (JED2KException ex) {
+                                log.warn("[session] DHT keyword '{}' search failed: {}", word, ex.getMessage());
+                                callback.onWordSkipped();
+                            }
+                        }
+                    }
+                } catch(JED2KException e) {
+                    log.error("[session] unable to start search keyword {} in DHT {}", keyword, e);
+                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
                 }
             }
         });
+    }
+
+    /**
+     * Split search phrase into keywords: punctuation becomes whitespace,
+     * only words of length >= 3 are kept (short words are too generic for KAD).
+     */
+    static List<String> splitKeywords(final String phrase) {
+        String normalized = phrase.toLowerCase(Locale.US).replaceAll("[^a-zа-яёіїєґ0-9]+", " ");
+        String[] tokens = normalized.split(" ");
+        List<String> words = new ArrayList<>();
+        for (String token : tokens) {
+            String word = token.trim();
+            if (word.length() >= 3) {
+                words.add(word);
+            }
+        }
+        return words;
     }
 
 
@@ -645,6 +747,9 @@ public class Session extends Thread {
             public void run() {
                 if (serverConection != null) {
                     serverConection.searchMore();
+                } else {
+                    log.warn("[session] no server connection, search more dropped");
+                    Session.this.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
                 }
             }
         });

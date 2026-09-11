@@ -6,6 +6,6 @@ public class Constants {
     public static final int BLOCK_SIZE_INT = (int)BLOCK_SIZE;
     public static final int BLOCKS_PER_PIECE = (int)(PIECE_SIZE/BLOCK_SIZE); // 50
     public static final long HIGHEST_LOWID_ED2K = 16777216L;
-    public static final int REQUEST_QUEUE_SIZE = 3;
+    public static final int REQUEST_QUEUE_SIZE = 10;
     public static final int PARTS_IN_REQUEST = 3;
 }
