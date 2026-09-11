@@ -417,7 +417,7 @@ public final class JdkHttpClient extends AbstractHttpClient {
         try {
             return ((HttpURLConnection) conn).getResponseCode();
         } catch (Throwable e) {
-            e.printStackTrace();
+            LOG.error("error", e);
             LOG.error("can't get response code ", e);
             return -1;
         }
@@ -464,7 +464,7 @@ public final class JdkHttpClient extends AbstractHttpClient {
                 LOG.warn(e2.getMessage());
             }
         } else {
-            e.printStackTrace();
+            LOG.error("error", e);
         }
     }
 

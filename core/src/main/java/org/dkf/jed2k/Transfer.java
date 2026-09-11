@@ -545,16 +545,16 @@ public class Transfer {
         for(final DownloadingPiece dp: dq) {
             // skip have pieces since we are already calculated them
             if (picker.havePiece(dp.pieceIndex)) continue;
-            status.totalDone += dp.downloadedCount()*Constants.BLOCK_SIZE;
-
-            int corr = 0;
-            if (dp.pieceIndex == lastBlock.pieceIndex && dp.isDownloaded(lastBlock.pieceBlock)) {
-                corr = lastBlock.size(size) - Constants.BLOCK_SIZE_INT;
+            if (dp.pieceIndex == lastBlock.pieceIndex) {
+                // last piece may be partial - count only downloaded blocks at their real sizes
+                for (int i = 0; i < blocksInLastPiece; ++i) {
+                    if (dp.isDownloaded(i)) {
+                        status.totalDone += new PieceBlock(dp.pieceIndex, i).size(size);
+                    }
+                }
+            } else {
+                status.totalDone += dp.downloadedCount()*Constants.BLOCK_SIZE;
             }
-
-            assert corr <= 0;
-
-            status.totalDone += corr;
         }
     }
 

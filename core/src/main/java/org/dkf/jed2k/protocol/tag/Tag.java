@@ -466,7 +466,7 @@ public final class Tag implements Serializable {
                 return stringValue();
             } catch (JED2KException e){
                 log.error("[tag] to string failed {}", e);
-                e.printStackTrace();
+                log.error("error", e);
             }
 
             return "";
@@ -654,7 +654,7 @@ public final class Tag implements Serializable {
             return stringValue();
         } catch(JED2KException e) {
             log.error("[tag] as string failed {}", e);
-            e.printStackTrace();
+            log.error("error", e);
             return "";
         }
     }
@@ -678,7 +678,7 @@ public final class Tag implements Serializable {
             return intValue();
         } catch(JED2KException e) {
             log.error("[tag] as int value failed {}", e);
-            e.printStackTrace();
+            log.error("error", e);
             return 0;
         }
     }
@@ -697,7 +697,7 @@ public final class Tag implements Serializable {
             return longValue();
         } catch(JED2KException e) {
             log.error("[tag] as long value failed {}", e);
-            e.printStackTrace();
+            log.error("error", e);
             return 0;
         }
     }

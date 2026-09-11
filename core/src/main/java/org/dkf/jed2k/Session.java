@@ -52,7 +52,7 @@ public class Session extends Thread {
     Map<Hash, Transfer> transfers = new HashMap<Hash, Transfer>();
     ArrayList<PeerConnection> connections = new ArrayList<PeerConnection>(); // incoming connections
     UDPConnection udpConnection = null; // for UDP source requests
-    ArrayList<InetSocketAddress> knownServers = new ArrayList<InetSocketAddress>(); // servers from OP_SERVERLIST
+    List<InetSocketAddress> knownServers = Collections.synchronizedList(new ArrayList<InetSocketAddress>()); // servers from OP_SERVERLIST
     Settings settings = null;
     long lastTick = Time.currentTime();
     HashMap<Integer, Hash> callbacks = new HashMap<Integer, Hash>();
@@ -113,10 +113,10 @@ public class Session extends Thread {
                         KadId target = kse.getKid();
                         assert target != null; // actually impossible
 
-                        if (transfer == null && transfer.wantMorePeers()) {
-                            log.debug("[session] transfer for {} not exists", target);
+                        if (transfer == null || transfer.isFinished()) {
+                            log.debug("[session] transfer for {} not exists or finished", target);
                             continue;
-                        };
+                        }
 
                         int ip = 0;
                         int sourceType = 0;
@@ -1096,16 +1096,16 @@ public class Session extends Thread {
                             ec = ErrorCode.PORT_MAPPING_NO_DEVICE;
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         ec = ErrorCode.PORT_MAPPING_IO_ERROR;
                     } catch (SAXException e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         ec = ErrorCode.PORT_MAPPING_SAX_ERROR;
                     } catch (ParserConfigurationException e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         ec = ErrorCode.PORT_MAPPING_CONFIG_ERROR;
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         ec = ErrorCode.PORT_MAPPING_EXCEPTION;
                     }
 
@@ -1142,14 +1142,14 @@ public class Session extends Thread {
                     log.error("port mapping removing failed");
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                log.error("error", e);
                 log.error("[session] unmap port I/O error {}", e);
             } catch (SAXException e) {
-                e.printStackTrace();
+                log.error("error", e);
                 log.error("[session] unmap port SAX error {}", e);
             }
             catch(Exception e) {
-                e.printStackTrace();
+                log.error("error", e);
                 log.error("[session] unmap port error {}", e);
             }
         }
@@ -1192,9 +1192,11 @@ public class Session extends Thread {
     void queryAllKnownServersForSources() {
         if (knownServers.isEmpty() || udpConnection == null) return;
         if (!transfers.isEmpty()) {
-            final Hash h = transfers.keySet().iterator().next();
-            final long size = transfers.values().iterator().next().size();
-            sendMultiServerSourcesRequest(h, size);
+            for (Map.Entry<Hash, Transfer> entry : transfers.entrySet()) {
+                final Hash h = entry.getKey();
+                final long size = entry.getValue().size();
+                sendMultiServerSourcesRequest(h, size);
+            }
         }
     }
 

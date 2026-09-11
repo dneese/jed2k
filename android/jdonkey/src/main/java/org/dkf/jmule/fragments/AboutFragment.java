@@ -57,10 +57,10 @@ public class AboutFragment extends Fragment implements MainFragment {
         View view = inflater.inflate(R.layout.fragment_about, container, false);
 
         final TextView title = (TextView) view.findViewById(R.id.fragment_about_title);
-        title.setText("Mule on Android " + " v" + Constants.JED2K_VERSION_STRING);
+        title.setText("jed2k " + Constants.JED2K_VERSION_STRING + " (build " + Constants.JED2K_BUILD + ")");
 
         final TextView buildNumber = (TextView) view.findViewById(R.id.fragment_about_build_number);
-        buildNumber.setText("\nBuild " + BuildConfig.VERSION_CODE + " - SDK level " + Build.VERSION.SDK_INT + " sources on: ");
+        buildNumber.setText("\nED2K/Kademlia client for Android - SDK " + Build.VERSION.SDK_INT);
 
         final TextView content = (TextView) view.findViewById(R.id.fragment_about_content);
         content.setText(Html.fromHtml(getAboutText()));

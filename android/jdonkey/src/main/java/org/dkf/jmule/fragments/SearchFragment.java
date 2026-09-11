@@ -286,7 +286,7 @@ public final class SearchFragment extends AbstractFragment implements
                     refreshFileTypeCounters(false);
                     currentQuery = query;
                     // takes first item in search expression for DHT search
-                    Engine.instance().performSearchDhtKeyword(expression.split("\\s+")[0]
+                    Engine.instance().performSearchDhtKeyword(expression
                             , searchParametersView.getMinSize() * 1024 * 1024
                             , searchParametersView.getMaxSize() * 1024 * 1024
                             , searchParametersView.getSourcesCount()
@@ -446,6 +446,7 @@ public final class SearchFragment extends AbstractFragment implements
     @Override
     public void onSearchResult(final SearchResultAlert alert) {
         log.info("search result size {} more {}", alert.getResults().size(), alert.isHasMoreResults()?"YES":"NO");
+        if (getActivity() == null) return;
         getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -481,6 +482,7 @@ public final class SearchFragment extends AbstractFragment implements
 
     @Override
     public void onTransferAdded(TransferAddedAlert alert) {
+        if (getActivity() == null) return;
         getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -491,6 +493,7 @@ public final class SearchFragment extends AbstractFragment implements
 
     @Override
     public void onTransferRemoved(TransferRemovedAlert alert) {
+        if (getActivity() == null) return;
         getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {

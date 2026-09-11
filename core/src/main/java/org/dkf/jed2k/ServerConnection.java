@@ -59,8 +59,8 @@ public class ServerConnection extends Connection {
         if (address == null) throw new JED2KException(INTERNAL_ERROR);
 
         try {
-            ByteBuffer ibuff = ByteBuffer.allocate(1024);
-            ByteBuffer obuff = ByteBuffer.allocate(1048);
+            ByteBuffer ibuff = ByteBuffer.allocate(8192);
+            ByteBuffer obuff = ByteBuffer.allocate(8192);
             return  new ServerConnection(identifier, address, ibuff, obuff, new PacketCombiner(), ses);
         } catch(ClosedChannelException e) {
             throw new JED2KException(ErrorCode.CHANNEL_CLOSED);
@@ -304,7 +304,7 @@ public class ServerConnection extends Connection {
                     try {
                         transfer.addPeer(endpoint, PeerInfo.SERVER);
                     } catch(JED2KException e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         break;
                     }
                 } else {
@@ -312,7 +312,7 @@ public class ServerConnection extends Connection {
                     try {
                         transfer.addPeer(endpoint, PeerInfo.SERVER);
                     } catch(JED2KException e) {
-                        e.printStackTrace();
+                        log.error("error", e);
                         break;
                     }
                 }

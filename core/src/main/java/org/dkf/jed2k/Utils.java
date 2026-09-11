@@ -14,8 +14,11 @@ import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class Utils {
+    private static final Logger log = LoggerFactory.getLogger(Utils.class);
     private static final char[] hexArray = "0123456789ABCDEF".toCharArray();
 
     public static String byte2String(byte[] value) {
@@ -74,7 +77,7 @@ public final class Utils {
             return InetAddress.getByAddress(raw);
         } catch (UnknownHostException e) {
             // this must't happens since raw data length always 4
-            e.printStackTrace();
+            log.error("error", e);
         }
 
         return null;

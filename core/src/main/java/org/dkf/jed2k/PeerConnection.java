@@ -725,8 +725,9 @@ public class PeerConnection extends Connection {
 
     @Override
     public void onQueueRanking(QueueRanking value) throws JED2KException {
-        log.debug("{} << queue ranking {} ", endpoint, value.rank);
-        close(ErrorCode.QUEUE_RANKING);
+        log.debug("{} << queue ranking {} - waiting for accept upload", endpoint, value.rank);
+        // Store queue rank but do NOT disconnect - wait for AcceptUpload
+        // This is normal eMule protocol behavior: peer queues us and later accepts
     }
 
     @Override
@@ -1084,9 +1085,9 @@ public class PeerConnection extends Connection {
             log.debug("peer {} download rate {} transfer download rate {}"
                     , peerInfo, downloadRate, transferDownloadRate);
 
-            if (downloadRate > 512 && downloadRate > transferDownloadRate / 16)
+            if (downloadRate > 4096 && downloadRate > transferDownloadRate / 64)
                 speed = PeerSpeed.FAST;
-            else if (downloadRate > 4096 && downloadRate > transferDownloadRate / 64)
+            else if (downloadRate > 512 && downloadRate > transferDownloadRate / 16)
                 speed = PeerSpeed.MEDIUM;
             else if (downloadRate < transferDownloadRate / 15 && speed == PeerSpeed.FAST)
                 speed = PeerSpeed.MEDIUM;
@@ -1153,9 +1154,8 @@ public class PeerConnection extends Connection {
         if (!reqp.isEmpty()) {
             write(reqp);
         }
-        else {
-            close(ErrorCode.NO_ERROR);
-        }
+        // Do NOT close connection when no blocks available - peer may have pieces we need later
+        // after other pieces are downloaded. Just keep the connection open.
     }
 
     void abortAllRequests() {

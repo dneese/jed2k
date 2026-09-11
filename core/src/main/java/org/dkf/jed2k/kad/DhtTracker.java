@@ -103,7 +103,7 @@ public class DhtTracker extends Thread {
             log.error("[tracker] I/O exception on DHT starting {}", e);
         } catch (Exception e) {
             log.error("[tracker] unexpected error {}", e);
-            e.printStackTrace();
+            log.error("error", e);
         }
         finally {
             log.debug("[tracker] stopping");
@@ -190,13 +190,13 @@ public class DhtTracker extends Thread {
             }
         } catch (IOException e) {
             log.error("[tracker] I/O exception {} on reading packet {}", e, incomingHeader);
-            e.printStackTrace();
+            log.error("error", e);
         } catch (JED2KException e) {
-            e.printStackTrace();
+            log.error("error", e);
             log.error("[tracker] exception {} on parse packet {}", e, incomingHeader);
             //log.error("packet dump \n{}", HexDump.dump(incomingBuffer.array()));
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("error", e);
             log.error("[tracker] unexpected error on parse packet {} {}", incomingHeader, e);
             //log.error("packet dump \n{}", HexDump.dump(incomingBuffer.array()));
         } finally {
@@ -234,7 +234,7 @@ public class DhtTracker extends Thread {
         }
         catch(Exception e) {
             log.error("[tracker] unexpected error {}", e);
-            e.printStackTrace();
+            log.error("error", e);
         }
         finally {
             // go to wait bytes mode when output order becomes empty

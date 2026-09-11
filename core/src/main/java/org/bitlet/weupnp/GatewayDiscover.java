@@ -138,7 +138,7 @@ public class GatewayDiscover {
                 }
 
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("error", e);
             } finally {
                 if (null != ssdp) {
                     ssdp.close();
@@ -301,7 +301,7 @@ public class GatewayDiscover {
                     return device;
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("error", e);
             }
         }
 

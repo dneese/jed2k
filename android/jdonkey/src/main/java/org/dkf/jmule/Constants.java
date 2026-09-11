@@ -33,13 +33,11 @@ public final class Constants {
 
     public static final boolean IS_GOOGLE_PLAY_DISTRIBUTION = BuildConfig.FLAVOR.equals("basic");
 
-    private static final String BUILD_PREFIX = !IS_GOOGLE_PLAY_DISTRIBUTION ? "1000" : "";
-
     /**
      * should manually match the manifest, here for convenience so we can ask for it from static contexts without
      * needing to pass the Android app context to obtain the PackageManager instance.
      */
-    public static final String JED2K_BUILD = BUILD_PREFIX + (BuildConfig.VERSION_CODE % 1000);
+    public static final String JED2K_BUILD = String.valueOf(BuildConfig.VERSION_CODE);
 
     public static final String APP_PACKAGE_NAME = "org.dkf.jmule";
 
@@ -155,23 +153,11 @@ public final class Constants {
     public static final String SOCIAL_URL_REDDIT_PAGE = "https://reddit.com/r/jed2k";
     public static final String GITHUB_PAGE = "https://github.com/a-pavlov/jed2k";
 
-    public static final String VPN_LEARN_MORE_URL = "http://www.jed2k.com/vpn.expressvpn.learnmore";
-    public static final String EXPRESSVPN_URL_BASIC = "http://www.jed2k.com/vpn.expressvpn";
-    public static final String EXPRESSVPN_URL_PLUS = "http://www.jed2k.com/vpn.expressvpn";
-    public static final float EXPRESSVPN_STARTING_USD_PRICE = 8.32f;
-
-    public static final String jed2k_GIVE_URL = "http://www.jed2k.com/give/?from=";
-
-    public static final String AD_NETWORK_SHORTCODE_APPLOVIN = "AL";
-    public static final String AD_NETWORK_SHORTCODE_INMOBI = "IM";
-    public static final String AD_NETWORK_SHORTCODE_REMOVEADS = "RA";
-    public static final String AD_NETWORK_SHORTCODE_MOBFOX = "MF";
-
     public static final String ED2K_NOTIFICATION_CHANNEL_ID = "ed2k";
 
-    public static final String SUPPORT_URL = "https://github/a-pavlov/jed2k";
-    public static boolean IS_BASIC_AND_DEBUG = false;
-    public static String JED2K_GIVE_URL = "https://github/a-pavlov/jed2k";
-    public static String ED2K_SERVERS_LIST_URL = "ed2k://|serverlist|http://upd.emule-security.org/server.met|/";
+    public static final String SUPPORT_URL = "https://github.com/a-pavlov/jed2k";
+    public static final boolean IS_BASIC_AND_DEBUG = false;
+    public static final String JED2K_GIVE_URL = "https://github.com/a-pavlov/jed2k";
+    public static final String ED2K_SERVERS_LIST_URL = "http://upd.emule-security.org/server.met";
     public static final String ASKED_FOR_ACCESS_COARSE_LOCATION_PERMISSIONS = "org.dkf.jmule.asked_for_access_coarse_location_permissions";
 }
