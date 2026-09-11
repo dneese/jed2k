@@ -84,21 +84,19 @@ public abstract class SearchResultListAdapter extends AbstractListAdapter<Search
     public void addResults(final List<SearchEntry> entries, boolean hasMoreResults) {
         log.debug("results {} more {}", entries.size(), hasMoreResults?"yes":"no");
         moreResults = hasMoreResults;
-        // Deduplicate by file hash
+        // Deduplicate by file hash, keeping the entry with more sources
         for (SearchEntry entry : entries) {
-            boolean duplicate = false;
-            for (SearchEntry existing : list) {
-                if (existing.getFileHash().equals(entry.getFileHash())) {
-                    // Update sources count if this one is higher
-                    if (entry.getSourcesCount() > existing.getSourcesCount()) {
-                        existing.setSourcesCount(entry.getSourcesCount());
-                    }
-                    duplicate = true;
+            int duplicateIndex = -1;
+            for (int i = 0; i < list.size(); ++i) {
+                if (list.get(i).getHash().equals(entry.getHash())) {
+                    duplicateIndex = i;
                     break;
                 }
             }
-            if (!duplicate) {
+            if (duplicateIndex < 0) {
                 list.add(entry);
+            } else if (entry.getSources() > list.get(duplicateIndex).getSources()) {
+                list.set(duplicateIndex, entry);
             }
         }
         Collections.sort(list, Collections.reverseOrder(sourcesCountComparator));
