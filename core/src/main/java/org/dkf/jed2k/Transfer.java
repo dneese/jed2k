@@ -58,6 +58,7 @@ public class Transfer {
     private Session session;
 
     private boolean pause = false;
+    private boolean autoPaused = false;
     private boolean abort = false;
     private HashSet<PeerConnection> connections = new HashSet<PeerConnection>();
 
@@ -391,8 +392,21 @@ public class Transfer {
         session.pushAlert(new TransferPausedAlert(hash));
     }
 
+    /**
+     * pause caused by a transient disk i/o error - should not be persisted
+     */
+    void autoPause() {
+        autoPaused = true;
+        pause();
+    }
+
+    boolean isAutoPaused() {
+        return autoPaused;
+    }
+
     void resume() {
         pause = false;
+        autoPaused = false;
         needSaveResumeData = true;
         session.pushAlert(new TransferResumedAlert(hash));
     }
@@ -446,7 +460,10 @@ public class Transfer {
         } else {
             picker.abortDownload(b, null);  // state of block must be writing!
             session.pushAlert(new TransferDiskIOErrorAlert(hash, ec));
-            pause();
+            // do not stay paused forever on a (often transient) disk i/o error -
+            // auto-pause only to stop hammering, then let the session resume us
+            autoPause();
+            session.scheduleTransferResume(hash, 20);
         }
 
         // reached last piece block from resume data, switch state

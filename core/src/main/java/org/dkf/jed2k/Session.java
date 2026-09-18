@@ -1232,7 +1232,7 @@ public class Session extends Thread {
                 for(final Transfer t: transfers.values()) {
                     if (t.isNeedSaveResumeData()) {
                         try {
-                            AddTransferParams atp = new AddTransferParams(t.getHash(), t.getCreateTime(), t.size(), t.getFile(), t.isPaused());
+                            AddTransferParams atp = new AddTransferParams(t.getHash(), t.getCreateTime(), t.size(), t.getFile(), t.isPaused() && !t.isAutoPaused());
                             atp.resumeData.setData(t.resumeData());
                             pushAlert(new TransferResumeDataAlert(t.getHash(), atp));
                         } catch(JED2KException e) {
@@ -1390,6 +1390,28 @@ public class Session extends Thread {
                 sendMultiServerSourcesRequest(h, size);
             }
         }
+    }
+
+    /**
+     * resume a transfer that was auto-paused by a transient disk i/o error,
+     * after a short delay so we do not hammer the disk repeatedly
+     */
+    void scheduleTransferResume(final Hash h, long delaySeconds) {
+        serverQueryService.schedule(new Runnable() {
+            @Override
+            public void run() {
+                commands.add(new Runnable() {
+                    @Override
+                    public void run() {
+                        Transfer t = transfers.get(h);
+                        if (t != null && t.isPaused() && t.isAutoPaused()) {
+                            t.resume();
+                            log.info("[session] auto-resumed transfer {} after transient disk error", h);
+                        }
+                    }
+                });
+            }
+        }, delaySeconds, TimeUnit.SECONDS);
     }
 
     /**
