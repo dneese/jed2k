@@ -56,4 +56,12 @@ public class ServerConnectionPolicy {
 
         return null;
     }
+
+    public String getIdentifier() {
+        return identifier;
+    }
+
+    public InetSocketAddress getAddress() {
+        return address;
+    }
 }

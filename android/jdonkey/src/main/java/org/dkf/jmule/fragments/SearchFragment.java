@@ -49,6 +49,9 @@ import org.dkf.jmule.views.AbstractDialog.OnDialogClickListener;
 import org.dkf.jmule.views.*;
 import org.slf4j.Logger;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * @author gubatron
  * @author aldenml
@@ -79,13 +82,19 @@ public final class SearchFragment extends AbstractFragment implements
     // Search timeout watchdog
     private final Handler timeoutHandler = new Handler(Looper.getMainLooper());
     private static final long SEARCH_TIMEOUT_MS = 60_000;
-    private int pendingSearches = 0;
+
+    // sources (SearchResultAlert.SOURCE_*) still awaiting their final result packet
+    private final Set<Integer> pendingSources = new HashSet<>();
+    // increments on every new search / cancel / timeout so stale results are ignored
+    private int searchGeneration = 0;
+
     private final Runnable searchTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
-            if (pendingSearches > 0) {
-                log.info("search timeout after {}ms, {} searches still pending", SEARCH_TIMEOUT_MS, pendingSearches);
-                pendingSearches = 0;
+            if (!pendingSources.isEmpty()) {
+                log.info("search timeout after {}ms, sources still pending {}", SEARCH_TIMEOUT_MS, pendingSources);
+                searchGeneration++;          // invalidate any results that still arrive
+                pendingSources.clear();
                 awaitingResults = false;
                 searchProgress.setProgressEnabled(false);
                 showSearchView(getView());
@@ -278,9 +287,10 @@ public final class SearchFragment extends AbstractFragment implements
         if (expression.isEmpty()) return;
 
         // Cancel any pending search (stale guard)
-        if (pendingSearches > 0) {
-            log.info("cancel previous pending search (pending={}) before starting new", pendingSearches);
-            pendingSearches = 0;
+        if (!pendingSources.isEmpty()) {
+            log.info("cancel previous pending search (pending={}) before starting new", pendingSources);
+            searchGeneration++;          // stale results of the old search are dropped
+            pendingSources.clear();
             awaitingResults = false;
             timeoutHandler.removeCallbacks(searchTimeoutRunnable);
         }
@@ -301,10 +311,14 @@ public final class SearchFragment extends AbstractFragment implements
                 SearchRequest.validate(minSize, maxSize, sources, complete, fileType, fileExtension, codec, mediaLength, mediaBitrate, expression);
             } catch (JED2KException e) {
                 log.error("search query validation failed: {}", e.getMessage());
-                UIUtils.showInformationDialog(getView().getContext(),
-                        R.string.search_failed_title,
-                        R.string.search_failed_title,
-                        false, null);
+                Context ctx = getActivity();
+                if (ctx == null) ctx = getView() != null ? getView().getContext() : null;
+                if (ctx != null) {
+                    UIUtils.showInformationDialog(ctx,
+                            R.string.search_failed_title,
+                            R.string.search_failed_title,
+                            false, null);
+                }
                 return;
             }
 
@@ -325,52 +339,61 @@ public final class SearchFragment extends AbstractFragment implements
                     wantDht = true;
                 }
 
-                pendingSearches = 0;
+                pendingSources.clear();
 
                 if (wantServer) {
                     log.info("perform search on servers");
+                    pendingSources.add(SearchResultAlert.SOURCE_SERVER);
                     Engine.instance().performSearch(minSize, maxSize, sources, complete, fileType, fileExtension, codec, mediaLength, mediaBitrate, expression);
-                    pendingSearches++;
                 }
 
                 if (wantDht) {
                     log.info("perform search on KAD");
+                    pendingSources.add(SearchResultAlert.SOURCE_KAD);
                     Engine.instance().performSearchDhtKeyword(expression, minSize, maxSize, sources, complete);
-                    pendingSearches++;
                 }
 
-                if (pendingSearches > 0) {
+                if (!pendingSources.isEmpty()) {
                     awaitingResults = true;
                     searchProgress.setProgressEnabled(true);
                     showSearchView(getView());
                     startSearchTimeout();
                 }
             } else {
-                 UIUtils.showInformationDialog(getView().getContext()
-                         , R.string.search_forbidden
-                         , R.string.search_forbidden_title
-                         , false
-                         , null);
+                 Context ctx = getActivity();
+                 if (ctx == null) ctx = getView() != null ? getView().getContext() : null;
+                 if (ctx != null) {
+                     UIUtils.showInformationDialog(ctx
+                             , R.string.search_forbidden
+                             , R.string.search_forbidden_title
+                             , false
+                             , null);
+                 }
              }
         } catch(NumberFormatException e) {
             log.error("Number format exception on input {}", e);
-            UIUtils.showInformationDialog(getView().getContext()
-                    , R.string.search_params_invalid_number
-                    , R.string.search_failed_title
-                    , true
-                    , null);
+            Context ctx = getActivity();
+            if (ctx == null) ctx = getView() != null ? getView().getContext() : null;
+            if (ctx != null) {
+                UIUtils.showInformationDialog(ctx
+                        , R.string.search_params_invalid_number
+                        , R.string.search_failed_title
+                        , true
+                        , null);
+            }
         }
     }
 
     public void performSearchMore() {
         if (!Engine.instance().getCurrentServerId().isEmpty()) {
-            if (pendingSearches > 0) {
-                pendingSearches = 0;
+            if (!pendingSources.isEmpty()) {
+                searchGeneration++;
+                pendingSources.clear();
                 awaitingResults = false;
                 timeoutHandler.removeCallbacks(searchTimeoutRunnable);
                 adapter.clear();
             }
-            pendingSearches = 1;
+            pendingSources.add(SearchResultAlert.SOURCE_SERVER);
             awaitingResults = true;
             adapter.clear();
             refreshFileTypeCounters(false);
@@ -387,10 +410,11 @@ public final class SearchFragment extends AbstractFragment implements
     }
 
     private void cancelSearch() {
-        log.info("cancel search pending={}", pendingSearches);
+        log.info("cancel search pending={}", pendingSources);
         timeoutHandler.removeCallbacks(searchTimeoutRunnable);
-        if (awaitingResults || pendingSearches > 0) {
-            pendingSearches = 0;
+        if (awaitingResults || !pendingSources.isEmpty()) {
+            searchGeneration++;          // stale results are dropped
+            pendingSources.clear();
             awaitingResults = false;
             adapter.clear();
             fileTypeCounter.clear();
@@ -406,9 +430,11 @@ public final class SearchFragment extends AbstractFragment implements
         timeoutHandler.postDelayed(searchTimeoutRunnable, SEARCH_TIMEOUT_MS);
     }
 
-    private void searchCompleted(final SearchResultAlert alert) {
-        if (pendingSearches > 0) {
-            pendingSearches--;
+    private void searchCompleted(final SearchResultAlert alert, final int generation) {
+        // drop results belonging to a previous/cancelled search
+        if (generation != searchGeneration) {
+            log.debug("ignoring stale search results (generation {} != current {})", generation, searchGeneration);
+            return;
         }
 
         if (alert.getResults() != null && !alert.getResults().isEmpty()) {
@@ -419,13 +445,17 @@ public final class SearchFragment extends AbstractFragment implements
             }
         }
 
-        // All parts completed or single-source search done
-        if (pendingSearches <= 0) {
-            pendingSearches = 0;
+        // a source is completed only by its final result packet
+        if (!alert.isHasMoreResults()) {
+            pendingSources.remove(alert.getSource());
+            log.info("source {} finished, remaining {}", alert.getSource(), pendingSources);
+        }
+
+        // all sources completed -> search finished
+        if (pendingSources.isEmpty()) {
             awaitingResults = false;
             timeoutHandler.removeCallbacks(searchTimeoutRunnable);
 
-            adapter.setFileType(ConfigurationManager.instance().getLastMediaTypeFilter());
             refreshFileTypeCounters(true);
             searchProgress.setProgressEnabled(false);
             showSearchView(getView());
@@ -433,7 +463,7 @@ public final class SearchFragment extends AbstractFragment implements
     }
 
     private void showSearchView(View view) {
-        if (awaitingResults || pendingSearches > 0) {
+        if (awaitingResults || !pendingSources.isEmpty()) {
             switchView(view, R.id.fragment_search_search_progress);
         } else {
             switchView(view, R.id.fragment_search_list);
@@ -519,12 +549,13 @@ public final class SearchFragment extends AbstractFragment implements
 
     @Override
     public void onSearchResult(final SearchResultAlert alert) {
-        log.info("search result size {} more {}", alert.getResults().size(), alert.isHasMoreResults()?"YES":"NO");
+        log.info("search result size {} more {} source {}", alert.getResults().size(), alert.isHasMoreResults()?"YES":"NO", alert.getSource());
         if (getActivity() == null) return;
+        final int generation = searchGeneration;
         getActivity().runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                searchCompleted(alert);
+                searchCompleted(alert, generation);
             }
         });
     }

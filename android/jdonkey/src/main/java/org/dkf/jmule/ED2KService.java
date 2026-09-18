@@ -696,46 +696,47 @@ public class ED2KService extends JobIntentService {
     }
 
     public void processAlert(final Alert a) {
+        final List<AlertListener> snapshot = new ArrayList<>(listeners);
         try {
             if (a instanceof ListenAlert) {
-                for (final AlertListener ls : listeners) ls.onListen((ListenAlert) a);
+                for (final AlertListener ls : snapshot) ls.onListen((ListenAlert) a);
             } else if (a instanceof SearchResultAlert) {
-                // inplace filtering bad words in case when search is limited or we have blocked hashes dictionary
-                if (safeMode || !blockedHashes.isEmpty()) {
-                    SearchResultAlert sa = (SearchResultAlert) a;
-                    Iterator<SearchEntry> itr = sa.getResults().iterator();
-                    while(itr.hasNext()) {
-                        SearchEntry se = itr.next();
-                        if ((safeMode && isFiltered(se.getFileName())) || isBlocked(se.getHash())) {
-                            itr.remove();
+                    // inplace filtering bad words in case when search is limited or we have blocked hashes dictionary
+                    if (safeMode || !blockedHashes.isEmpty()) {
+                        SearchResultAlert sa = (SearchResultAlert) a;
+                        Iterator<SearchEntry> itr = sa.getResults().iterator();
+                        while(itr.hasNext()) {
+                            SearchEntry se = itr.next();
+                            if ((safeMode && isFiltered(se.getFileName())) || isBlocked(se.getHash())) {
+                                itr.remove();
+                            }
                         }
                     }
-                }
-                for (final AlertListener ls : listeners) ls.onSearchResult((SearchResultAlert) a);
+                    for (final AlertListener ls : snapshot) ls.onSearchResult((SearchResultAlert) a);
             } else if (a instanceof ServerMessageAlert) {
-                for (final AlertListener ls : listeners) ls.onServerMessage((ServerMessageAlert) a);
+                for (final AlertListener ls : snapshot) ls.onServerMessage((ServerMessageAlert) a);
             } else if (a instanceof ServerStatusAlert) {
-                for (final AlertListener ls : listeners) ls.onServerStatus((ServerStatusAlert) a);
+                for (final AlertListener ls : snapshot) ls.onServerStatus((ServerStatusAlert) a);
             } else if (a instanceof ServerConectionClosed) {
-                for (final AlertListener ls : listeners) ls.onServerConnectionClosed((ServerConectionClosed) a);
+                for (final AlertListener ls : snapshot) ls.onServerConnectionClosed((ServerConectionClosed) a);
             } else if (a instanceof ServerIdAlert) {
-                for (final AlertListener ls : listeners) ls.onServerIdAlert((ServerIdAlert) a);
+                for (final AlertListener ls : snapshot) ls.onServerIdAlert((ServerIdAlert) a);
             } else if (a instanceof ServerConnectionAlert) {
-                for (final AlertListener ls : listeners) ls.onServerConnectionAlert((ServerConnectionAlert) a);
+                for (final AlertListener ls : snapshot) ls.onServerConnectionAlert((ServerConnectionAlert) a);
             } else if (a instanceof TransferResumedAlert) {
-                for (final AlertListener ls : listeners) ls.onTransferResumed((TransferResumedAlert) a);
+                for (final AlertListener ls : snapshot) ls.onTransferResumed((TransferResumedAlert) a);
             } else if (a instanceof TransferPausedAlert) {
-                for (final AlertListener ls : listeners) ls.onTransferPaused((TransferPausedAlert) a);
+                for (final AlertListener ls : snapshot) ls.onTransferPaused((TransferPausedAlert) a);
             } else if (a instanceof TransferAddedAlert) {
                 localHashes.put(((TransferAddedAlert) a).hash, 0);
                 log.info("[ED2K service] new transfer added {} save resume data now", ((TransferAddedAlert) a).hash);
                 session.saveResumeData();
-                for (final AlertListener ls : listeners) ls.onTransferAdded((TransferAddedAlert) a);
+                for (final AlertListener ls : snapshot) ls.onTransferAdded((TransferAddedAlert) a);
             } else if (a instanceof TransferRemovedAlert) {
                 log.info("[ED2K service] transfer removed {}", ((TransferRemovedAlert) a).hash);
                 localHashes.remove(((TransferRemovedAlert) a).hash);
                 removeResumeDataFile(((TransferRemovedAlert) a).hash);
-                for (final AlertListener ls : listeners) ls.onTransferRemoved((TransferRemovedAlert) a);
+                for (final AlertListener ls : snapshot) ls.onTransferRemoved((TransferRemovedAlert) a);
             } else if (a instanceof TransferResumeDataAlert) {
                 saveResumeData((TransferResumeDataAlert) a);
             } else if (a instanceof TransferFinishedAlert) {
@@ -767,7 +768,7 @@ public class ED2KService extends JobIntentService {
 
                 // dispatch alert if no i/o errors on this transfer in last 10 seconds
                 if (errorAlert.getCreationTime() - lastIOErrorTime > 10 * 1000) {
-                    for (final AlertListener ls : listeners) ls.onTransferIOError(errorAlert);
+                    for (final AlertListener ls : snapshot) ls.onTransferIOError(errorAlert);
                     notificationHandler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -776,7 +777,7 @@ public class ED2KService extends JobIntentService {
                     });
                 }
             } else if (a instanceof PortMapAlert) {
-                for (final AlertListener ls : listeners) ls.onPortMapAlert((PortMapAlert) a);
+                for (final AlertListener ls : snapshot) ls.onPortMapAlert((PortMapAlert) a);
                 log.info("[ED2K service] port mapped {} {}", ((PortMapAlert)a).port, ((PortMapAlert)a).ec.getDescription());
             }
             else {
@@ -908,12 +909,17 @@ public class ED2KService extends JobIntentService {
         assert(scheduledExecutorService == null);
         scheduledExecutorService = Executors.newScheduledThreadPool(1);
         scheduledExecutorService.scheduleWithFixedDelay(() -> {
+            try {
                 Alert a = session.popAlert();
                 while(a != null) {
                     processAlert(a);
                     a = session.popAlert();
                 }
-            },  100, 2000, TimeUnit.MILLISECONDS);
+            } catch(Throwable t) {
+                // never kill the alert pump because of a single bad alert
+                log.error("[ED2K service] alert processing error", t);
+            }
+        },  100, 200, TimeUnit.MILLISECONDS);
 
         // save resume data every 200 seconds
         scheduledExecutorService.scheduleWithFixedDelay(() -> {
@@ -974,6 +980,21 @@ public class ED2KService extends JobIntentService {
 
             // Transfers status.
             notificationViews.setTextViewText(R.id.view_permanent_status_text_downloads, downloads + " @ " + sDown);
+
+            // server + dht status line - user looking at the notification must know
+            // whether we talk to a server and whether DHT is active
+            StringBuilder statusLine = new StringBuilder();
+            boolean hasServer = session != null && session.hasServerConnection();
+            if (session != null && session.isConnectedToServer()) {
+                statusLine.append("Server: ").append(session.getConnectedServerName())
+                        .append(" (").append(session.getClientId() == 0 ? "LowID" : "HiID").append(")");
+            } else if (hasServer) {
+                statusLine.append("Server: connecting...");
+            } else {
+                statusLine.append("Server: none");
+            }
+            statusLine.append(" \u00b7 KAD: ").append(isDhtEnabled() ? "on" : "off");
+            notificationViews.setTextViewText(R.id.view_permanent_status_text_title, statusLine.toString());
 
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 

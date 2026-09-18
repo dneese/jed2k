@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.DatagramChannel;
@@ -64,44 +65,51 @@ public class UDPConnection {
     }
 
     public void onReadable() throws JED2KException {
-        bufferIncoming.clear();
-        try {
-            channel.receive(bufferIncoming);
-        } catch (IOException e) {
-            log.warn("[udp] receive error: {}", e.getMessage());
-            return;
-        }
-
-        bufferIncoming.flip();
-        if (bufferIncoming.remaining() < 1) return;
-        
-        stat.receiveBytes(bufferIncoming.remaining(), 0);
-        PacketHeader header = new PacketHeader();
-        header.get(bufferIncoming);
-        
-        // manually parse FoundFileSources from UDP response
-        if (bufferIncoming.remaining() >= MD4.HASH_SIZE + 1) {
+        while (true) {
+            bufferIncoming.clear();
+            SocketAddress sender;
             try {
-                Hash fileHash = new Hash();
-                fileHash.get(bufferIncoming);
-                int count = bufferIncoming.get() & 0xFF;
-                
-                Transfer t = session.findTransferDirect(fileHash);
-                if (t != null) {
-                    log.debug("[udp] received {} sources for {}", count, fileHash);
-                    for (int i = 0; i < count && bufferIncoming.remaining() >= 6; i++) {
-                        int ip = bufferIncoming.getInt();
-                        int port = bufferIncoming.getShort() & 0xFFFF;
-                        if (!Utils.isLowId(ip)) {
-                            try {
-                                t.addPeer(new Endpoint(ip, port), PeerInfo.SERVER);
-                            } catch(JED2KException e) {
-                                // skip unreachable
+                sender = channel.receive(bufferIncoming);
+            } catch (IOException e) {
+                log.warn("[udp] receive error: {}", e.getMessage());
+                return;
+            }
+
+            if (sender == null || bufferIncoming.position() == 0) break;
+
+            try {
+                bufferIncoming.flip();
+
+                stat.receiveBytes(bufferIncoming.remaining(), 0);
+                PacketHeader header = new PacketHeader();
+                header.get(bufferIncoming);
+
+                // manually parse FoundFileSources from UDP response
+                if (bufferIncoming.remaining() >= MD4.HASH_SIZE + 1) {
+                    Hash fileHash = new Hash();
+                    fileHash.get(bufferIncoming);
+                    int count = bufferIncoming.get() & 0xFF;
+
+                    Transfer t = session.findTransferDirect(fileHash);
+                    if (t != null) {
+                        log.debug("[udp] received {} sources for {}", count, fileHash);
+                        int parsed = 0;
+                        for (int i = 0; i < count && bufferIncoming.remaining() >= 6 && parsed < 64; i++) {
+                            int ip = bufferIncoming.getInt();
+                            int port = bufferIncoming.getShort() & 0xFFFF;
+                            parsed++;
+                            if (!Utils.isLowId(ip)) {
+                                try {
+                                    t.addPeer(new Endpoint(ip, port), PeerInfo.SERVER);
+                                } catch(JED2KException e) {
+                                    // skip unreachable
+                                }
                             }
                         }
                     }
                 }
-            } catch(Exception e) {
+            } catch(Throwable e) {
+                // never let a malformed datagram disturb the udp socket or the session
                 log.debug("[udp] failed to parse response: {}", e.getMessage());
             }
         }

@@ -66,11 +66,16 @@ public class Session extends Thread {
     private ScheduledExecutorService serverQueryService = Executors.newScheduledThreadPool(1); // periodic server queries for source refresh
     private AtomicBoolean finished = new AtomicBoolean(false);
     private boolean aborted = false;
+    private boolean serverQueryScheduled = false;
     private Statistics accumulator = new Statistics();
     private GatewayDiscover discover = new GatewayDiscover();
     private GatewayDevice device = null;
 
     private final ServerConnectionPolicy serverConnectionPolicy = new ServerConnectionPolicy(5, 5);
+
+    // fallback to another known server when current server retry budget is exhausted
+    private long fallbackNextServerTime = -1;
+    private int fallbackCursor = 0;
 
     /**
      * async disk io futures
@@ -225,11 +230,13 @@ public class Session extends Thread {
                 filtered.add(e);
             }
 
-            session.pushAlert(new SearchResultAlert(filtered, false));
+            session.pushAlert(new SearchResultAlert(filtered, false, SearchResultAlert.SOURCE_KAD));
         }
     }
 
     private static class MultiWordDhtCallback implements Listener {
+        private static final int MAX_ENTRIES = 20000;
+
         private final Session session;
         private final int totalWords;
         private final long minSize;
@@ -254,8 +261,20 @@ public class Session extends Thread {
             Set<Hash> thisWordHashes = new HashSet<>();
             for (KadSearchEntry e : data) {
                 Hash h = e.getHash();
+                if (h == null) continue;
                 thisWordHashes.add(h);
-                hashEntries.putIfAbsent(h, e);
+                // keep the entry with more sources
+                KadSearchEntry prev = hashEntries.get(h);
+                if (prev == null) {
+                    hashEntries.put(h, e);
+                } else if (e.getSources() > prev.getSources()) {
+                    hashEntries.put(h, e);
+                }
+                // bound map to avoid unbounded growth on big dht responses
+                if (hashEntries.size() > MultiWordDhtCallback.MAX_ENTRIES) {
+                    hashEntries.clear();
+                    hashCounts.clear();
+                }
             }
             for (Hash h : thisWordHashes) {
                 hashCounts.merge(h, 1, Integer::sum);
@@ -283,7 +302,7 @@ public class Session extends Thread {
                         filtered.add(e);
                     }
                 }
-                session.pushAlert(new SearchResultAlert(filtered, false));
+                session.pushAlert(new SearchResultAlert(filtered, false, SearchResultAlert.SOURCE_KAD));
             }
         }
     }
@@ -348,14 +367,18 @@ public class Session extends Thread {
             pushAlert(new ListenAlert(e.getMessage(), settings.listenPort));
         }
 
-        // start periodic server queries for source refresh
-        if (serverQueryService != null && knownServers.isEmpty() == false) {
+        // start periodic server queries for source refresh - schedule unconditionally,
+        // guard empty known servers / transfers inside the task (schedule is idempotent)
+        if (serverQueryService != null && !serverQueryScheduled) {
+            serverQueryScheduled = true;
             serverQueryService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
-                    queryAllKnownServersForSources();
+                    if (!knownServers.isEmpty() && !transfers.isEmpty()) {
+                        queryAllKnownServersForSources();
+                    }
                 }
-            }, 5, 5, TimeUnit.MINUTES);
+            }, 60, 5, TimeUnit.MINUTES);
             log.info("[session] started periodic server queries every 5 minutes");
         }
 
@@ -386,23 +409,37 @@ public class Session extends Thread {
                 SelectionKey key = keyIterator.next();
 
                 if (key.isValid()) {
-
-                    if(key.isAcceptable()) {
-                        // a connection was accepted by a ServerSocketChannel.
-                        //log.trace("Key is acceptable");
-                        incomingConnection();
-                    } else if (key.isConnectable()) {
-                        // a connection was established with a remote server/peer.
-                        //log.trace("Key is connectable");
-                        ((Connection)key.attachment()).onConnectable();
-                    } else if (key.isReadable()) {
-                        // a channel is ready for reading
-                        //log.trace("Key is readable");
-                        ((Connection)key.attachment()).onReadable();
-                    } else if (key.isWritable()) {
-                        // a channel is ready for writing
-                        //log.trace("Key is writeable");
-                        ((Connection)key.attachment()).onWriteable();
+                    try {
+                        if(key.isAcceptable()) {
+                            // a connection was accepted by a ServerSocketChannel.
+                            //log.trace("Key is acceptable");
+                            incomingConnection();
+                        } else if (key.isConnectable()) {
+                            // a connection was established with a remote server/peer.
+                            //log.trace("Key is connectable");
+                            ((Connection)key.attachment()).onConnectable();
+                        } else if (key.isReadable()) {
+                            // a channel is ready for reading
+                            //log.trace("Key is readable");
+                            Object attachment = key.attachment();
+                            if (attachment instanceof UDPConnection) {
+                                ((UDPConnection) attachment).onReadable();
+                            } else if (attachment != null) {
+                                ((Connection) attachment).onReadable();
+                            }
+                        } else if (key.isWritable()) {
+                            // a channel is ready for writing
+                            //log.trace("Key is writeable");
+                            Object attachment = key.attachment();
+                            if (attachment instanceof UDPConnection) {
+                                ((UDPConnection) attachment).onWriteable();
+                            } else if (attachment != null) {
+                                ((Connection) attachment).onWriteable();
+                            }
+                        }
+                    } catch(Throwable t) {
+                        // never let a single channel failure kill the whole session
+                        log.error("[session] error while processing selection key", t);
                     }
                 }
 
@@ -446,6 +483,29 @@ public class Session extends Thread {
                     // emit alert - connect to server failed
                     log.error("server connection failed {}", e);
                 }
+            } else if (serverConnectionPolicy.hasCandidate()
+                    && !serverConnectionPolicy.hasIterations()
+                    && serverQueryService != null
+                    && !knownServers.isEmpty()) {
+                // retry budget for the failed server is exhausted - periodically try another known server
+                if (fallbackNextServerTime == -1 || fallbackNextServerTime < currentSessionTime) {
+                    InetSocketAddress fallback = pickKnownServerFallback();
+                    fallbackNextServerTime = currentSessionTime + Time.minutes(2);
+                    if (fallback != null) {
+                        try {
+                            serverConection = ServerConnection.makeConnection(fallback.getHostString()
+                                    , fallback
+                                    , Session.this);
+                            serverConection.connect();
+                            log.info("[session] fallback connect to known server {}", fallback);
+                        } catch(JED2KException e) {
+                            log.error("server fallback connection failed {}", e);
+                        }
+                    } else {
+                        // no other server available right now - re-check later
+                        fallbackNextServerTime = currentSessionTime + Time.minutes(5);
+                    }
+                }
             }
         }
 
@@ -472,9 +532,14 @@ public class Session extends Thread {
             listen();
 
             while(!aborted && !interrupted()) {
-                int channelCount = selector.select(1000);
-                Time.updateCachedTime();
-                on_tick(ErrorCode.NO_ERROR, channelCount);
+                try {
+                    int channelCount = selector.select(1000);
+                    Time.updateCachedTime();
+                    on_tick(ErrorCode.NO_ERROR, channelCount);
+                } catch(Throwable t) {
+                    // be resilient - single error must not kill the session thread
+                    log.error("[run] session tick error", t);
+                }
             }
         }
         catch(IOException e) {
@@ -592,6 +657,8 @@ public class Session extends Thread {
             @Override
             public void run() {
                 serverConnectionPolicy.removeConnectCandidates();
+                fallbackNextServerTime = -1;
+                fallbackCursor = 0;
 
                 if (serverConection != null) {
                     serverConection.close(ErrorCode.NO_ERROR);
@@ -616,6 +683,8 @@ public class Session extends Thread {
             public void run() {
                 try {
                     serverConnectionPolicy.removeConnectCandidates();
+                    fallbackNextServerTime = -1;
+                    fallbackCursor = 0;
 
                     final InetSocketAddress address = new InetSocketAddress(host, port);
 
@@ -659,6 +728,22 @@ public class Session extends Thread {
         return "";
     }
 
+    synchronized public boolean isConnectedToServer() {
+        return serverConection != null && serverConection.isHandshakeCompleted();
+    }
+
+    synchronized public boolean hasServerConnection() {
+        return serverConection != null;
+    }
+
+    synchronized public String getConnectedServerName() {
+        if (serverConection != null && serverConection.isHandshakeCompleted()) {
+            String id = serverConection.getIdentifier();
+            return id != null ? id : "";
+        }
+        return "";
+    }
+
 
     protected void onServerConnectionClosed(ServerConnection sc, BaseErrorCode ec) {
         if (settings.reconnectoToServer && ec.getCode() != ErrorCode.NO_ERROR.getCode()) {
@@ -692,21 +777,23 @@ public class Session extends Thread {
                 DhtTracker tracker = dhtTracker.get();
                 if (tracker == null || tracker.isAborted()) {
                     log.warn("[session] DHT tracker not active, keyword search dropped");
-                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
+                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false, SearchResultAlert.SOURCE_KAD));
                     return;
                 }
                 try {
                     List<String> words = splitKeywords(keyword);
                     if (words.isEmpty()) {
                         log.warn("[session] no search keywords extracted from '{}'", keyword);
-                        s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
+                        s.pushAlert(new SearchResultAlert(new LinkedList<>(), false, SearchResultAlert.SOURCE_KAD));
                         return;
                     }
                     if (words.size() == 1) {
                         tracker.searchKeywords(words.get(0), new DhtKeywordsCallback(s, minSize, maxSize, sources, completeSources));
                     } else {
-                        MultiWordDhtCallback callback = new MultiWordDhtCallback(s, words.size(), minSize, maxSize, sources, completeSources);
-                        for (String word : words) {
+                        // deduplicate words so totalWords counts distinct keywords only
+                        List<String> distinctWords = new ArrayList<>(new LinkedHashSet<>(words));
+                        MultiWordDhtCallback callback = new MultiWordDhtCallback(s, distinctWords.size(), minSize, maxSize, sources, completeSources);
+                        for (String word : distinctWords) {
                             try {
                                 tracker.searchKeywords(word, callback);
                             } catch (JED2KException ex) {
@@ -717,7 +804,7 @@ public class Session extends Thread {
                     }
                 } catch(JED2KException e) {
                     log.error("[session] unable to start search keyword {} in DHT {}", keyword, e);
-                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false));
+                    s.pushAlert(new SearchResultAlert(new LinkedList<>(), false, SearchResultAlert.SOURCE_KAD));
                 }
             }
         });
@@ -1302,6 +1389,24 @@ public class Session extends Thread {
                 final long size = entry.getValue().size();
                 sendMultiServerSourcesRequest(h, size);
             }
+        }
+    }
+
+    /**
+     * pick next known server (excluding the failed one) for reconnect fallback
+     */
+    private InetSocketAddress pickKnownServerFallback() {
+        synchronized (knownServers) {
+            if (knownServers.isEmpty()) return null;
+            InetSocketAddress failed = serverConnectionPolicy.getAddress();
+            for (int i = 0; i < knownServers.size(); ++i) {
+                int idx = (fallbackCursor + i) % knownServers.size();
+                InetSocketAddress candidate = knownServers.get(idx);
+                if (failed != null && failed.equals(candidate)) continue;
+                fallbackCursor = (idx + 1) % knownServers.size();
+                return candidate;
+            }
+            return null;
         }
     }
 

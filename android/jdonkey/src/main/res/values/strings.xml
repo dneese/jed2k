@@ -193,6 +193,7 @@
     <string name="transfer_state_paused">Paused</string>
     <string name="transfer_state_completed">Completed</string>
     <string name="transfer_state_stalled">Waiting sources</string>
+    <string name="transfer_state_connecting">Waiting for peer connections...</string>
     <string name="transfer_state_downloading">Downloading</string>
 
     <string name="server_add_name">Name</string>

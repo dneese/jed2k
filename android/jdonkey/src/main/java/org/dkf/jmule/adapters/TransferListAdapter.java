@@ -349,7 +349,12 @@ public class TransferListAdapter extends BaseExpandableListAdapter {
                     status.setText(R.string.transfer_state_downloading);
                     break;
                 case STALLED:
-                    status.setText(R.string.transfer_state_stalled);
+                    // we know sources but cannot connect yet - tell the user it is waiting for peers
+                    if (download.getTotalPeers() > 0 && download.getConnectedPeers() == 0) {
+                        status.setText(R.string.transfer_state_connecting);
+                    } else {
+                        status.setText(R.string.transfer_state_stalled);
+                    }
                     break;
                 default:
                     status.setText("");

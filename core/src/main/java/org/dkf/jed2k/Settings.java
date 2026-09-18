@@ -15,7 +15,7 @@ public class Settings {
     public int maxFailCount = 20;
     public int maxPeerListSize = 100;
     public int minPeerReconnectTime = 5;
-    public int peerConnectionTimeout = 5;
+    public int peerConnectionTimeout = 30;
     public int sessionConnectionsLimit = 50;
     public int bufferPoolSize = 250;            // dataSize of buffer pool in blocks of 180K
     public int maxConnectionsPerSecond = 25;
