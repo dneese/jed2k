@@ -195,6 +195,45 @@ public class MainActivity extends AbstractActivity implements
         setupDrawer();
     }
 
+    /**
+     * download and parse a server.met from a plain http(s) URL (used by the
+     * "renew server list" button and ed2k://|serverlist|...|/ links)
+     */
+    private static void loadServersFromUrl(final MainActivity main, final String serversLink) {
+        AsyncTask<Void, Void, ServerMet> task = new AsyncTask<Void, Void, ServerMet>() {
+            @Override
+            protected ServerMet doInBackground(Void... voids) {
+                try {
+                    byte[] data = IOUtils.toByteArray(new URI(serversLink));
+                    ByteBuffer buffer = ByteBuffer.wrap(data);
+                    buffer.order(ByteOrder.LITTLE_ENDIAN);
+                    ServerMet sm = new ServerMet();
+                    sm.get(buffer);
+                    return sm;
+                } catch(Exception e) {
+                    log.error("unable to load servers {}", e);
+                }
+
+                return null;
+            }
+
+            @Override
+            protected void onPostExecute(ServerMet result) {
+                if (result != null) {
+                    main.lastLoadedServers = result;
+                    UIUtils.showYesNoDialog(main
+                            , R.string.add_servers_list_text
+                            , R.string.add_servers_list_title,
+                            main);
+                } else {
+                    UIUtils.showInformationDialog(main, R.string.link_download_failed, R.string.link_download_failed, true, null);
+                }
+            }
+        };
+
+        task.execute();
+    }
+
     private static List<EMuleLink> parseCollectionContent(Context context, Uri uri) {
         InputStream inStream = null;
         List<EMuleLink> res = new LinkedList<>();
@@ -284,6 +323,14 @@ public class MainActivity extends AbstractActivity implements
                     return;
                 }
 
+                // plain http(s) link - e.g. the "renew server list" button sends a
+                // direct server.met URL, so download and parse it as a server list
+                // (EMuleLink.fromString below only understands ed2k:// links)
+                if (uri != null && (uri.startsWith("http://") || uri.startsWith("https://"))) {
+                    loadServersFromUrl(this, uri);
+                    return;
+                }
+
                 EMuleLink link = EMuleLink.fromString(uri);
 
                 if (link.getType().equals(EMuleLink.LinkType.SERVER)) {
@@ -305,40 +352,7 @@ public class MainActivity extends AbstractActivity implements
                 }
                 else if (link.getType().equals(EMuleLink.LinkType.SERVERS)) {
                     final String serversLink = link.getStringValue();
-                    final MainActivity main = this;
-                    AsyncTask<Void, Void, ServerMet> task = new AsyncTask<Void, Void, ServerMet>() {
-
-                        @Override
-                        protected ServerMet doInBackground(Void... voids) {
-                            try {
-                                byte[] data = IOUtils.toByteArray(new URI(serversLink));
-                                ByteBuffer buffer = ByteBuffer.wrap(data);
-                                buffer.order(ByteOrder.LITTLE_ENDIAN);
-                                ServerMet sm = new ServerMet();
-                                sm.get(buffer);
-                                return sm;
-                            } catch(Exception e) {
-                                log.error("unable to load servers {}", e);
-                            }
-
-                            return null;
-                        }
-
-                        @Override
-                        protected void onPostExecute(ServerMet result) {
-                            if (result != null) {
-                                lastLoadedServers = result;
-                                UIUtils.showYesNoDialog(main
-                                        , R.string.add_servers_list_text
-                                        , R.string.add_servers_list_title,
-                                        main);
-                            } else {
-                                UIUtils.showInformationDialog(main, R.string.link_download_failed, R.string.link_download_failed, true, null);
-                            }
-                        }
-                    };
-
-                    task.execute();
+                    loadServersFromUrl(this, serversLink);
                 }
                 else if (link.getType().equals(EMuleLink.LinkType.NODES)) {
                     final String serversLink = link.getStringValue();
