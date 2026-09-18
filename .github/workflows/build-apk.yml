@@ -35,7 +35,7 @@ jobs:
       run: yes | "${{ steps.sdk.outputs.manager }}" --licenses || true
 
     - name: Install Android SDK platform 33
-      run: "${{ steps.sdk.outputs.manager }} platforms;android-33 build-tools;33.0.0"
+      run: '${{ steps.sdk.outputs.manager }} "platforms;android-33" "build-tools;33.0.0"'
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
