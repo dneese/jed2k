@@ -18,14 +18,24 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+    - name: Locate sdkmanager
+      id: sdk
+      run: |
+        if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+          echo "manager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" >> "$GITHUB_OUTPUT"
+        elif [ -x "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" ]; then
+          echo "manager=$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" >> "$GITHUB_OUTPUT"
+        else
+          find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null || true
+          exit 1
+        fi
+        echo "ANDROID_HOME=$ANDROID_HOME"
 
     - name: Accept Android SDK licenses
-      run: yes | sdkmanager --licenses || true
+      run: yes | "${{ steps.sdk.outputs.manager }}" --licenses || true
 
     - name: Install Android SDK platform 33
-      run: sdkmanager "platforms;android-33" "build-tools;33.0.0"
+      run: "${{ steps.sdk.outputs.manager }}" "platforms;android-33" "build-tools;33.0.0"
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
