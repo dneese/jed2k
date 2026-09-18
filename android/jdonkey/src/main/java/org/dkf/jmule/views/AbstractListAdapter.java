@@ -81,7 +81,9 @@ public abstract class AbstractListAdapter<T> extends BaseAdapter implements Filt
         this.dialogs = new ArrayList<>();
         this.list = (list==null || list.equals(Collections.emptyList())) ? new ArrayList<T>() : list;
         this.checked = checked;
-        this.visualList = list;
+        // visualList is the (possibly filtered) view - never alias the backing list,
+        // otherwise clear()/add() on one silently corrupts the other
+        this.visualList = new ArrayList<>(this.list);
     }
 
     public AbstractListAdapter(Context context, int viewItemId, List<T> list) {
@@ -194,7 +196,7 @@ public abstract class AbstractListAdapter<T> extends BaseAdapter implements Filt
 
     public void setList(List<T> list) {
         this.list = list.equals(Collections.emptyList()) ? new ArrayList<T>() : list;
-        this.visualList = this.list;
+        this.visualList = new ArrayList<>(this.list);
         this.checked.clear();
         notifyDataSetInvalidated();
     }
@@ -249,7 +251,7 @@ public abstract class AbstractListAdapter<T> extends BaseAdapter implements Filt
 
     public void updateList(List<T> g) {
         list = g;
-        visualList = g;
+        visualList = new ArrayList<>(g);
         checked.clear();
         notifyDataSetChanged();
     }

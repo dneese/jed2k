@@ -67,9 +67,16 @@ public class Session extends Thread {
     private AtomicBoolean finished = new AtomicBoolean(false);
     private boolean aborted = false;
     private boolean serverQueryScheduled = false;
+    private long lastServerQueryTime = 0;
     private Statistics accumulator = new Statistics();
     private GatewayDiscover discover = new GatewayDiscover();
     private GatewayDevice device = null;
+    /**
+     * last UPnP port-mapping outcome for UI diagnostics:
+     * "off", "ok", "no device" or "error"
+     */
+    private volatile String upnpStatus = "off";
+    private boolean upnpRenewalScheduled = false;
 
     private final ServerConnectionPolicy serverConnectionPolicy = new ServerConnectionPolicy(5, 5);
 
@@ -368,18 +375,24 @@ public class Session extends Thread {
         }
 
         // start periodic server queries for source refresh - schedule unconditionally,
-        // guard empty known servers / transfers inside the task (schedule is idempotent)
+        // guard empty known servers / transfers inside the task (schedule is idempotent).
+        // LowID clients can never reach other LowIDs, so they refresh sources
+        // twice as often to compensate the smaller reachable source pool
         if (serverQueryService != null && !serverQueryScheduled) {
             serverQueryScheduled = true;
             serverQueryService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
-                    if (!knownServers.isEmpty() && !transfers.isEmpty()) {
+                    if (knownServers.isEmpty() || transfers.isEmpty()) return;
+                    long intervalMs = Utils.isLowId(clientId) ? 2*60*1000L : 5*60*1000L;
+                    long now = System.currentTimeMillis();
+                    if (now - lastServerQueryTime >= intervalMs) {
+                        lastServerQueryTime = now;
                         queryAllKnownServersForSources();
                     }
                 }
-            }, 60, 5, TimeUnit.MINUTES);
-            log.info("[session] started periodic server queries every 5 minutes");
+            }, 60, 60, TimeUnit.SECONDS);
+            log.info("[session] started periodic server queries (2 min on LowID, 5 min otherwise)");
         }
 
         // initialize UDP connection for source requests
@@ -611,6 +624,7 @@ public class Session extends Thread {
             // stop service
             diskIOService.shutdown();
             upnpService.shutdown();
+            serverQueryService.shutdown();
             stopUPnPImpl("TCP");
             stopUPnPImpl("UDP");
             log.info("Session finished");
@@ -1192,6 +1206,8 @@ public class Session extends Thread {
 
     public Hash getUserAgent() { return settings.userAgent; }
     public int getClientId() { return clientId; }
+    public boolean isLowId() { return Utils.isLowId(clientId); }
+    public String getUpnpStatus() { return upnpStatus; }
     public int getListenPort() { return settings.listenPort; }
     public String getClientName() { return settings.clientName; }
     public String getModName() { return settings.modName; }
@@ -1302,10 +1318,36 @@ public class Session extends Thread {
                     }
 
                     pushAlert(new PortMapAlert(port, port, ec));
+                    if (ec == ErrorCode.NO_ERROR || ec == ErrorCode.PORT_MAPPING_ALREADY_MAPPED) {
+                        upnpStatus = "ok";
+                    } else if (ec == ErrorCode.PORT_MAPPING_NO_DEVICE) {
+                        upnpStatus = "no device";
+                    } else {
+                        upnpStatus = "error";
+                    }
                 }
             });
         } catch(RejectedExecutionException e) {
             throw new JED2KException(ErrorCode.PORT_MAPPING_COMMAND_REJECTED);
+        }
+
+        // router port-mapping leases expire - renew the mapping periodically
+        // while the session lives (dies with serverQueryService on stop)
+        if (serverQueryService != null && !upnpRenewalScheduled) {
+            upnpRenewalScheduled = true;
+            serverQueryService.scheduleAtFixedRate(new Runnable() {
+                @Override
+                public void run() {
+                    if (!settings.autoUPnP || upnpService.isShutdown()
+                            || serverQueryService.isShutdown()) return;
+                    try {
+                        startUPnP();
+                        log.debug("[session] scheduled UPnP mapping renewal");
+                    } catch(JED2KException e) {
+                        log.warn("[session] UPnP renewal failed {}", e);
+                    }
+                }
+            }, 30, 30, TimeUnit.MINUTES);
         }
     }
 
@@ -1318,6 +1360,7 @@ public class Session extends Thread {
                     stopUPnPImpl("TCP");
                     stopUPnPImpl("UDP");
                     device = null;
+                    upnpStatus = "off";
                 }
             });
         } catch(RejectedExecutionException e) {
@@ -1383,12 +1426,12 @@ public class Session extends Thread {
      */
     void queryAllKnownServersForSources() {
         if (knownServers.isEmpty() || udpConnection == null) return;
-        if (!transfers.isEmpty()) {
-            for (Map.Entry<Hash, Transfer> entry : transfers.entrySet()) {
-                final Hash h = entry.getKey();
-                final long size = entry.getValue().size();
-                sendMultiServerSourcesRequest(h, size);
-            }
+        // snapshot: this runs on the scheduler thread while the session
+        // thread mutates transfers - never iterate the live map here
+        for (Map.Entry<Hash, Transfer> entry : new ArrayList<>(transfers.entrySet())) {
+            final Hash h = entry.getKey();
+            final long size = entry.getValue().size();
+            sendMultiServerSourcesRequest(h, size);
         }
     }
 
@@ -1397,21 +1440,26 @@ public class Session extends Thread {
      * after a short delay so we do not hammer the disk repeatedly
      */
     void scheduleTransferResume(final Hash h, long delaySeconds) {
-        serverQueryService.schedule(new Runnable() {
-            @Override
-            public void run() {
-                commands.add(new Runnable() {
-                    @Override
-                    public void run() {
-                        Transfer t = transfers.get(h);
-                        if (t != null && t.isPaused() && t.isAutoPaused()) {
-                            t.resume();
-                            log.info("[session] auto-resumed transfer {} after transient disk error", h);
+        if (serverQueryService.isShutdown()) return;
+        try {
+            serverQueryService.schedule(new Runnable() {
+                @Override
+                public void run() {
+                    commands.add(new Runnable() {
+                        @Override
+                        public void run() {
+                            Transfer t = transfers.get(h);
+                            if (t != null && t.isPaused() && t.isAutoPaused()) {
+                                t.resume();
+                                log.info("[session] auto-resumed transfer {} after transient disk error", h);
+                            }
                         }
-                    }
-                });
-            }
-        }, delaySeconds, TimeUnit.SECONDS);
+                    });
+                }
+            }, delaySeconds, TimeUnit.SECONDS);
+        } catch(java.util.concurrent.RejectedExecutionException e) {
+            log.warn("[session] unable to schedule auto-resume, executor stopped");
+        }
     }
 
     /**

@@ -58,13 +58,15 @@ public class UDPConnection {
 
     public void close() {
         try {
-            channel.close();
+            if (key != null) key.cancel();
+            if (channel != null) channel.close();
         } catch (IOException e) {
             log.error("[udp] channel close exception {}", e.getMessage());
         }
     }
 
     public void onReadable() throws JED2KException {
+        if (channel == null || !channel.isOpen()) return;
         while (true) {
             bufferIncoming.clear();
             SocketAddress sender;
@@ -116,6 +118,7 @@ public class UDPConnection {
     }
 
     public void onWriteable() {
+        if (channel == null || !channel.isOpen() || key == null) return;
         try {
             bufferOutgoing.clear();
             Pair<Serializable, Endpoint> point = outgoingOrder.poll();
@@ -139,7 +142,14 @@ public class UDPConnection {
             log.warn("[udp writeable] i/o error {}", e);
         }
 
-        close();
+        // never kill the whole UDP socket on a transient send failure -
+        // it would silently disable all UDP source discovery forever.
+        // drop write interest and stay alive for reads and future sends
+        try {
+            if (key != null && key.isValid()) key.interestOps(SelectionKey.OP_READ);
+        } catch(Exception e) {
+            log.warn("[udp writeable] failed to reset interest ops {}", e.getMessage());
+        }
     }
 
     /**

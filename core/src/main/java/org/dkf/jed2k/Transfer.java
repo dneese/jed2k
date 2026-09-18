@@ -387,6 +387,9 @@ public class Transfer {
 
     void pause() {
         pause = true;
+        // manual pause cancels any pending auto-resume: user intent wins
+        // over the transient disk-error recovery
+        autoPaused = false;
         disconnectAll(ErrorCode.TRANSFER_PAUSED);
         needSaveResumeData = true;
         session.pushAlert(new TransferPausedAlert(hash));

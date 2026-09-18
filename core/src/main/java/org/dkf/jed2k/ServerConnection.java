@@ -292,7 +292,19 @@ public class ServerConnection extends Connection {
         if (transfer != null) {
             log.debug("onFoundSources {}", value.sources.size());
             log.debug("session: {}", Utils.isLowId(session.clientId)?"LOW":"HI");
-            for(final Endpoint endpoint: value.sources) {
+            List<Endpoint> sources = null;
+            if (Utils.isLowId(session.clientId)) {
+                // LowID clients can never connect to other LowIDs - try the
+                // reachable (HighID) sources first instead of wasting attempts
+                sources = new LinkedList<>();
+                for (final Endpoint e : value.sources) {
+                    if (!Utils.isLowId(e.getIP())) sources.add(e);
+                }
+                for (final Endpoint e : value.sources) {
+                    if (Utils.isLowId(e.getIP())) sources.add(e);
+                }
+            }
+            for (final Endpoint endpoint : (sources != null) ? sources : value.sources) {
                 if (Utils.isLowId(endpoint.getIP())) {
                     log.debug("Low ID endpoint detected {}", endpoint);
                     if (!Utils.isLowId(session.clientId) && !session.callbacks.containsKey(endpoint.getIP())) {
@@ -305,7 +317,7 @@ public class ServerConnection extends Connection {
                         transfer.addPeer(endpoint, PeerInfo.SERVER);
                     } catch(JED2KException e) {
                         log.error("error", e);
-                        break;
+                        continue;
                     }
                 } else {
                     log.debug("to getHash {} added endpoint {}", value.hash, endpoint);
@@ -313,7 +325,7 @@ public class ServerConnection extends Connection {
                         transfer.addPeer(endpoint, PeerInfo.SERVER);
                     } catch(JED2KException e) {
                         log.error("error", e);
-                        break;
+                        continue;
                     }
                 }
             }

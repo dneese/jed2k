@@ -286,6 +286,9 @@ public class MainActivity extends AbstractActivity implements
             return;
         }
 
+        // keep getIntent() fresh: shutdown flag and updateAvailable live there
+        setIntent(intent);
+
         if (isShutdown(intent)) {
             return;
         }
@@ -400,6 +403,11 @@ public class MainActivity extends AbstractActivity implements
             } catch(JED2KException e) {
                 log.error("intent get data parse error {}", e.toString());
                 UIUtils.showInformationDialog(this, R.string.intent_link_parse_error, R.string.add_servers_list_title, true, null);
+            } catch(RuntimeException e) {
+                // e.g. IllegalArgumentException from URLDecoder on malformed '%' sequences -
+                // never let a garbage link kill the activity
+                log.error("intent get data unexpected error {}", e.toString());
+                UIUtils.showInformationDialog(this, R.string.intent_link_parse_error, R.string.add_servers_list_title, true, null);
             }
         }
 
@@ -495,7 +503,7 @@ public class MainActivity extends AbstractActivity implements
         };
 
         IntentFilter bf = new IntentFilter(Constants.ACTION_NOTIFY_SDCARD_MOUNTED);
-        registerReceiver(mainBroadcastReceiver, bf);
+        registerReceiver(mainBroadcastReceiver, bf, Context.RECEIVER_NOT_EXPORTED);
     }
 
     @Override
@@ -561,10 +569,28 @@ public class MainActivity extends AbstractActivity implements
 
     private void mainResume() {
         checkSDPermission();
+        checkNotificationPermission();
         syncNavigationMenu();
         if (firstTime) {
             firstTime = false;
             Engine.instance().startServices(); // it's necessary for the first time after wizard
+        }
+    }
+
+    /**
+     * Android 13+ requires a runtime grant for POST_NOTIFICATIONS,
+     * otherwise transfer-done and foreground notifications stay silent
+     */
+    private void checkNotificationPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS}, 8071);
+            }
+        } catch (Exception e) {
+            log.warn("notification permission request failed {}", e.toString());
         }
     }
 

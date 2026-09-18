@@ -202,9 +202,25 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     private void listenAlert() { }
 
+    /**
+     * post to the UI thread only while the fragment is attached -
+     * alert pump keeps firing after detach, bare getActivity() crashes
+     */
+    private void runOnUiThreadSafe(final Runnable r) {
+        final android.app.Activity a = getActivity();
+        if (a == null || !isAdded()) return;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (!isAdded()) return;
+                r.run();
+            }
+        });
+    }
+
     @Override
     public void onListen(ListenAlert alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 listenAlert();
@@ -219,7 +235,7 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     @Override
     public void onServerConnectionAlert(final ServerConnectionAlert alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 handleServerConnectionAlert(alert.identifier);
@@ -229,7 +245,7 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     @Override
     public void onServerMessage(final ServerMessageAlert alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 handleServerMessage(alert.identifier, alert.msg);
@@ -239,7 +255,7 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     @Override
     public void onServerStatus(final ServerStatusAlert alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 handleServerStatus(alert.identifier, alert.usersCount, alert.filesCount);
@@ -249,7 +265,7 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     @Override
     public void onServerIdAlert(final ServerIdAlert alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 handleServerIdChanged(alert.identifier, alert.userId);
@@ -259,7 +275,7 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
 
     @Override
     public void onServerConnectionClosed(final ServerConectionClosed alert) {
-        getActivity().runOnUiThread(new Runnable() {
+        runOnUiThreadSafe(new Runnable() {
             @Override
             public void run() {
                 handleServerConnectionClosed(alert.identifier);
@@ -475,16 +491,9 @@ public class ServersFragment extends AbstractFragment implements MainFragment, A
                 }
 
                 list.add(newSE);
-            }
-
-            for(final ServerMet.ServerMetEntry e: servers) {
-                ServerEntry newSE = new ServerEntry(e);
-                if (newSE.equals(se)) {
-                    newSE = se;
-                }
-
                 visualList.add(newSE);
             }
+            notifyDataSetChanged();
         }
 
         final ServerEntry getItem(final String id) {

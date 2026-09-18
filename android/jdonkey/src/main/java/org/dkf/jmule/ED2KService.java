@@ -31,6 +31,7 @@ import org.dkf.jed2k.Pair;
 import org.dkf.jed2k.Session;
 import org.dkf.jed2k.Settings;
 import org.dkf.jed2k.TransferHandle;
+import org.dkf.jed2k.Utils;
 import org.dkf.jed2k.alert.Alert;
 import org.dkf.jed2k.alert.ListenAlert;
 import org.dkf.jed2k.alert.PortMapAlert;
@@ -986,14 +987,21 @@ public class ED2KService extends JobIntentService {
             StringBuilder statusLine = new StringBuilder();
             boolean hasServer = session != null && session.hasServerConnection();
             if (session != null && session.isConnectedToServer()) {
+                // clientId 0 means "not assigned yet" - only classify real ids,
+                // a small numeric id is LowID (unreachable from outside)
+                final int cid = session.getClientId();
+                final String idKind = (cid == 0) ? "..." : (Utils.isLowId(cid) ? "LowID" : "HiID");
                 statusLine.append("Server: ").append(session.getConnectedServerName())
-                        .append(" (").append(session.getClientId() == 0 ? "LowID" : "HiID").append(")");
+                        .append(" (").append(idKind).append(")");
             } else if (hasServer) {
                 statusLine.append("Server: connecting...");
             } else {
                 statusLine.append("Server: none");
             }
             statusLine.append(" \u00b7 KAD: ").append(isDhtEnabled() ? "on" : "off");
+            if (session != null) {
+                statusLine.append(" \u00b7 UPnP: ").append(session.getUpnpStatus());
+            }
             notificationViews.setTextViewText(R.id.view_permanent_status_text_title, statusLine.toString());
 
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -1074,7 +1082,7 @@ public class ED2KService extends JobIntentService {
             /**
              * Pending intents
              */
-            PendingIntent openPending = PendingIntent.getActivity(getApplicationContext(), 0, intentShowTransfers, 0);
+            PendingIntent openPending = PendingIntent.getActivity(getApplicationContext(), 0, intentShowTransfers, PendingIntent.FLAG_IMMUTABLE);
 
             /**
              * Remote view for normal view
@@ -1088,7 +1096,7 @@ public class ED2KService extends JobIntentService {
             mNotificationTemplate.setTextViewText(R.id.notification_line_two, summary);
 
             Context context = getApplicationContext();
-            PendingIntent pi = PendingIntent.getActivity(context, 0, intentShowTransfers, PendingIntent.FLAG_UPDATE_CURRENT);
+            PendingIntent pi = PendingIntent.getActivity(context, 0, intentShowTransfers, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
             Notification notification = new NotificationCompat.Builder(context, Constants.ED2K_NOTIFICATION_CHANNEL_ID)

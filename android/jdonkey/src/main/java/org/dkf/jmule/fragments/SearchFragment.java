@@ -391,11 +391,11 @@ public final class SearchFragment extends AbstractFragment implements
                 pendingSources.clear();
                 awaitingResults = false;
                 timeoutHandler.removeCallbacks(searchTimeoutRunnable);
-                adapter.clear();
+                // do NOT clear the adapter here: "more" must append to the
+                // results already on screen, not wipe them
             }
             pendingSources.add(SearchResultAlert.SOURCE_SERVER);
             awaitingResults = true;
-            adapter.clear();
             refreshFileTypeCounters(false);
             Engine.instance().performSearchMore();
             searchProgress.setProgressEnabled(true);

@@ -88,17 +88,16 @@ public class EMuleLink {
     public static EMuleLink fromString(final String uri) throws JED2KException {
         if (uri == null) throw new JED2KException(ErrorCode.LINK_MAILFORMED);
 
-        String decUri;
-        try {
-            decUri = URLDecoder.decode(uri, "UTF-8");
+        // split the raw link first: decoding the whole URI upfront corrupts
+        // legit content (double-decodes %25 sequences, turns '+' into space),
+        // so every part is decoded exactly once below.
+        // (real world links sometimes encode the first delimiter -
+        // ed2k://%7Cfile|... - normalize just that prefix)
+        String normalized = uri;
+        if (normalized.regionMatches(true, 0, "ed2k://%7c", 0, 10)) {
+            normalized = "ed2k://|" + normalized.substring(10);
         }
-        catch(UnsupportedEncodingException e) {
-            throw new JED2KException(ErrorCode.UNSUPPORTED_ENCODING);
-        }
-
-        assert decUri != null;
-
-        String[] parts = decUri.split("\\|");
+        String[] parts = normalized.split("\\|");
 
         if (parts.length < 2 || !"ed2k://".equals(parts[0]) || !"/".equals(parts[parts.length - 1])) {
             throw new JED2KException(ErrorCode.LINK_MAILFORMED);
@@ -106,30 +105,28 @@ public class EMuleLink {
 
         if ("server".equals(parts[1]) && parts.length == 5) {
             try {
-                return new EMuleLink(null, Long.parseLong(parts[3]), parts[2], LinkType.SERVER);
+                return new EMuleLink(null, Long.parseLong(parts[3]), decode(parts[2]), LinkType.SERVER);
             } catch(NumberFormatException e) {
                 throw new JED2KException(ErrorCode.NUMBER_FORMAT_ERROR);
             }
         }
 
         if ("serverlist".equals(parts[1]) && parts.length == 4) {
-            return new EMuleLink(null, 0, parts[2], LinkType.SERVERS);
+            return new EMuleLink(null, 0, decode(parts[2]), LinkType.SERVERS);
         }
 
         if ("nodeslist".equals(parts[1]) && parts.length == 4) {
-            return new EMuleLink(null, 0, parts[2], LinkType.NODES);
+            return new EMuleLink(null, 0, decode(parts[2]), LinkType.NODES);
         }
 
         if ("file".equals(parts[1]) && parts.length >= 6) {
             try {
                 return new EMuleLink(Hash.fromString(parts[4])
                         , Long.parseLong(parts[3])
-                        , URLDecoder.decode(parts[2], "UTF-8")
+                        , decode(parts[2])
                         , LinkType.FILE);
             } catch(NumberFormatException e) {
                 throw new JED2KException(ErrorCode.NUMBER_FORMAT_ERROR);
-            } catch(UnsupportedEncodingException e) {
-                throw new JED2KException(ErrorCode.UNSUPPORTED_ENCODING);
             } catch (Exception e) {
                 // here illegal argument exception most likely, but it doesn't matter
                 throw new JED2KException(ErrorCode.INTERNAL_ERROR);
@@ -137,5 +134,18 @@ public class EMuleLink {
         }
 
         throw new JED2KException(ErrorCode.UNKNOWN_LINK_TYPE);
+    }
+
+    private static String decode(final String s) throws JED2KException {
+        try {
+            return URLDecoder.decode(s, "UTF-8");
+        }
+        catch(UnsupportedEncodingException e) {
+            throw new JED2KException(ErrorCode.UNSUPPORTED_ENCODING);
+        }
+        catch(IllegalArgumentException e) {
+            // malformed '%' escape sequence - report as bad link, never crash
+            throw new JED2KException(ErrorCode.LINK_MAILFORMED);
+        }
     }
 }

@@ -1,5 +1,6 @@
 package org.dkf.jed2k.protocol.kad;
 
+import org.dkf.jed2k.exception.ErrorCode;
 import org.dkf.jed2k.exception.JED2KException;
 import org.dkf.jed2k.protocol.Container;
 import org.dkf.jed2k.protocol.Serializable;
@@ -20,6 +21,12 @@ public class KadNodesDat implements Serializable {
     List<KadEntry> contacts = new LinkedList<>();
     List<KadExtEntry> extContacts = new LinkedList<>();
 
+    /**
+     * hard upper bound for contacts parsed from an untrusted nodes.dat -
+     * without it a malicious file can force OOM via a huge count field
+     */
+    private static final long MAX_CONTACTS = 20000;
+
     @Override
     public ByteBuffer get(ByteBuffer src) throws JED2KException {
         numContacts.get(src);
@@ -36,6 +43,10 @@ public class KadNodesDat implements Serializable {
             if (version.intValue() >= 1 && version.intValue() <= 3) {
                 numContacts.get(src);
             }
+        }
+
+        if (numContacts.longValue() < 0 || numContacts.longValue() > MAX_CONTACTS) {
+            throw new JED2KException(ErrorCode.INTERNAL_ERROR);
         }
 
         for (int i = 0; i != numContacts.intValue(); ++i) {
